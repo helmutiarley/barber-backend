@@ -70,4 +70,6 @@ jobs:
             docker network create barber-proxy 2>/dev/null || true
             cd /opt/barber/proxy
             docker compose up -d
+            docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile \
+              || docker compose restart caddy
             /opt/barber/update-image.sh prod api "${{ steps.image.outputs.name }}:${{ github.sha }}"
