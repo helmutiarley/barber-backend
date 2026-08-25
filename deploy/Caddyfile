@@ -2,6 +2,8 @@
 	email {$CADDY_EMAIL}
 }
 
+# Staging frontend. Browser calls /v1 on this host; Caddy forwards to the API
+# container on the Docker network (not via the public API hostname).
 barber-stage.helmutiarley.cloud {
 	handle /v1* {
 		reverse_proxy barber-stage-api:3000
@@ -16,6 +18,12 @@ barber-stage.helmutiarley.cloud {
 	}
 }
 
+# Staging API (public). Same container as above.
+barber-api-stage.helmutiarley.cloud {
+	reverse_proxy barber-stage-api:3000
+}
+
+# Production frontend. Same local /v1 proxy as staging.
 barber.helmutiarley.cloud {
 	handle /v1* {
 		reverse_proxy barber-prod-api:3000
@@ -28,4 +36,9 @@ barber.helmutiarley.cloud {
 	handle {
 		reverse_proxy barber-prod-web:80
 	}
+}
+
+# Production API (public). Same container as above.
+barber-api.helmutiarley.cloud {
+	reverse_proxy barber-prod-api:3000
 }
