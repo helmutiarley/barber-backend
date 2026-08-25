@@ -11,5 +11,6 @@ tests
 .env.*
 !.env.example
 deploy
-docker
+docker/*
+!docker/entrypoint.sh
 docker-compose.yml
