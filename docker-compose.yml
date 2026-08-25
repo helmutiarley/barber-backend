@@ -1,0 +1,37 @@
+# Local infrastructure only. Staging and production databases live on their own
+# servers and are wired up by CI/CD, never here.
+#
+# One container per technology, but two databases inside it: integration tests
+# TRUNCATE every table, so they get `barber_test` to themselves and can never
+# touch development data.
+#
+# Bring it up with `npm run start:db`, which waits for every service to report
+# healthy instead of racing the application against a half-open port.
+
+services:
+  postgres:
+    image: postgres:16
+    # No container_name on purpose: it would stop a second project (CI, another
+    # branch) from bringing the same stack up alongside this one.
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-barber}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-barber}
+      POSTGRES_DB: ${POSTGRES_DB:-barber}
+      # Created next to POSTGRES_DB on first boot (see docker/postgres/initdb).
+      # Integration tests own this one and truncate it freely.
+      POSTGRES_ADDITIONAL_DATABASES: ${POSTGRES_TEST_DB:-barber_test}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres-data:
