@@ -1,0 +1,26 @@
+name: barber-proxy
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: barber-caddy
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - barber-proxy
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  barber-proxy:
+    external: true

@@ -1,0 +1,31 @@
+{
+	email {$CADDY_EMAIL}
+}
+
+barber-stage.helmutiarley.cloud {
+	handle /v1* {
+		reverse_proxy barber-stage-api:3000
+	}
+
+	handle /health {
+		reverse_proxy barber-stage-api:3000
+	}
+
+	handle {
+		reverse_proxy barber-stage-web:80
+	}
+}
+
+barber.helmutiarley.cloud {
+	handle /v1* {
+		reverse_proxy barber-prod-api:3000
+	}
+
+	handle /health {
+		reverse_proxy barber-prod-api:3000
+	}
+
+	handle {
+		reverse_proxy barber-prod-web:80
+	}
+}

@@ -1,0 +1,73 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: image
+        run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/barber-api" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:prod
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: deploy/docker-compose.yml,deploy/Caddyfile,deploy/proxy.docker-compose.yml,deploy/update-image.sh
+          target: /tmp/barber-deploy
+          strip_components: 1
+
+      - uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+            mkdir -p /opt/barber/proxy /opt/barber/prod
+            cp /tmp/barber-deploy/Caddyfile /opt/barber/proxy/Caddyfile
+            cp /tmp/barber-deploy/proxy.docker-compose.yml /opt/barber/proxy/docker-compose.yml
+            cp /tmp/barber-deploy/docker-compose.yml /opt/barber/prod/docker-compose.yml
+            cp /tmp/barber-deploy/update-image.sh /opt/barber/update-image.sh
+            chmod +x /opt/barber/update-image.sh
+            docker network create barber-proxy 2>/dev/null || true
+            cd /opt/barber/proxy
+            docker compose up -d
+            /opt/barber/update-image.sh prod api "${{ steps.image.outputs.name }}:${{ github.sha }}"

@@ -1,0 +1,71 @@
+name: barber-${BARBER_ENV}
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: barber-${BARBER_ENV}-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: barber
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: barber
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U barber -d barber']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  api:
+    image: ${API_IMAGE}
+    container_name: barber-${BARBER_ENV}-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://barber:${POSTGRES_PASSWORD}@postgres:5432/barber
+      JWT_SECRET: ${JWT_SECRET}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL:-15m}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      SHOP_TIMEZONE: ${SHOP_TIMEZONE:-America/Sao_Paulo}
+      CANCELLATION_WINDOW_HOURS: ${CANCELLATION_WINDOW_HOURS:-24}
+      CARD_FEE_RATE_DEBIT: ${CARD_FEE_RATE_DEBIT:-0.015}
+      CARD_FEE_RATE_CREDIT: ${CARD_FEE_RATE_CREDIT:-0.035}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    networks:
+      - internal
+      - barber-proxy
+
+  web:
+    image: ${WEB_IMAGE}
+    container_name: barber-${BARBER_ENV}-web
+    restart: unless-stopped
+    networks:
+      - internal
+      - barber-proxy
+
+volumes:
+  postgres-data:
+
+networks:
+  internal:
+  barber-proxy:
+    external: true

@@ -1,0 +1,15 @@
+.git
+.github
+build
+coverage
+node_modules
+plans
+specs
+tests
+*.md
+.env
+.env.*
+!.env.example
+deploy
+docker
+docker-compose.yml
