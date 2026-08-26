@@ -28,7 +28,9 @@ export class PlatformController {
   create = async (req: Request, res: Response): Promise<void> => {
     const body = req.validated.body as CreateShopBody;
 
-    res.status(201).json({ data: await this.platformService.create(body) });
+    res
+      .status(201)
+      .json({ data: await this.platformService.create(body, req.hostname.toLowerCase()) });
   };
 
   update = async (req: Request, res: Response): Promise<void> => {

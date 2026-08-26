@@ -106,6 +106,19 @@ describe('platform routes', () => {
       expect(services[0].count).toBe(3);
     });
 
+    it('derives the shop domain from the CRM host that received the request', async () => {
+      const { authHeader } = await superAdmin();
+
+      const response = await request(app)
+        .post('/v1/platform/shops')
+        .set('Host', 'crm.barbearia360.dev')
+        .set('Authorization', authHeader)
+        .send(newShop);
+
+      expect(response.status).toBe(201);
+      expect(response.body.data.domain).toBe('nova.barbearia360.dev');
+    });
+
     it('lets the new owner log in on the tenant host right away', async () => {
       const { authHeader } = await superAdmin();
 

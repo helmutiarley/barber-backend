@@ -89,10 +89,14 @@ export class PlatformService {
     };
   }
 
-  async create(input: CreateShopInput): Promise<ShopDto> {
+  async create(input: CreateShopInput, platformHost?: string): Promise<ShopDto> {
     if (RESERVED_SLUGS.has(input.slug)) {
       throw new ValidationError(`Slug "${input.slug}" is reserved`);
     }
+
+    const baseDomain = platformHost?.startsWith('crm.')
+      ? platformHost.slice('crm.'.length)
+      : this.config.shopsBaseDomain;
 
     const passwordHash = await hashPassword(input.owner.password);
 
@@ -103,7 +107,7 @@ export class PlatformService {
           shops.create({
             name: input.name,
             slug: input.slug,
-            domain: `${input.slug}.${this.config.shopsBaseDomain}`,
+            domain: `${input.slug}.${baseDomain}`,
             customDomain: input.customDomain ?? null,
           }),
         );
