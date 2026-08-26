@@ -160,7 +160,7 @@ export class PlatformService {
         return created;
       });
 
-      const dnsRecord = await this.cloudflareDns.ensureCname(shop.domain, baseDomain);
+      const dnsRecord = await this.cloudflareDns.ensureARecord(shop.domain, baseDomain);
 
       return { ...this.toDto(shop), dnsRecord };
     } catch (error) {

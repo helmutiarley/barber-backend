@@ -72,6 +72,9 @@ jobs:
             grep -q '^CF_ZONE_ID=' /opt/barber/prod/.env \
               && sed -i 's|^CF_ZONE_ID=.*|CF_ZONE_ID=${{ secrets.PROD_ZONE_ID }}|' /opt/barber/prod/.env \
               || echo 'CF_ZONE_ID=${{ secrets.PROD_ZONE_ID }}' >> /opt/barber/prod/.env
+            grep -q '^SERVER_IP=' /opt/barber/prod/.env \
+              && sed -i 's|^SERVER_IP=.*|SERVER_IP=${{ secrets.VPS_HOST }}|' /opt/barber/prod/.env \
+              || echo 'SERVER_IP=${{ secrets.VPS_HOST }}' >> /opt/barber/prod/.env
             docker network create barber-proxy 2>/dev/null || true
             cd /opt/barber/proxy
             docker compose up -d

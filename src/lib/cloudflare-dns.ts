@@ -23,19 +23,24 @@ export class CloudflareDns {
     this.logger = logger;
   }
 
-  async ensureCname(name: string, zoneName: string): Promise<DnsRecordStatus> {
+  async ensureARecord(name: string, zoneName: string): Promise<DnsRecordStatus> {
     if (!this.config.cloudflareApiToken) {
+      return 'skipped';
+    }
+
+    if (!this.config.serverIp) {
+      this.logger.warn({ name }, 'SERVER_IP is not configured; skipping DNS record creation');
       return 'skipped';
     }
 
     try {
       const zoneId = await this.resolveZoneId(zoneName);
       const response = await this.request<{ id: string }>(`/zones/${zoneId}/dns_records`, {
-        type: 'CNAME',
+        type: 'A',
         name,
-        content: zoneName,
+        content: this.config.serverIp,
         ttl: 1,
-        proxied: false,
+        proxied: true,
       });
 
       if (response.success) {

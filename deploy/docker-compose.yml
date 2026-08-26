@@ -48,6 +48,7 @@ services:
       # creation. Empty token disables it.
       CF_API_TOKEN: ${CF_API_TOKEN:-}
       CF_ZONE_ID: ${CF_ZONE_ID:-}
+      SERVER_IP: ${SERVER_IP:-}
     healthcheck:
       test:
         [

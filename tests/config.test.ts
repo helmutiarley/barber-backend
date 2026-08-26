@@ -29,6 +29,7 @@ describe('loadConfig', () => {
       shopCacheTtlMs: 30_000,
       cloudflareApiToken: null,
       cloudflareZoneId: null,
+      serverIp: null,
     });
   });
 

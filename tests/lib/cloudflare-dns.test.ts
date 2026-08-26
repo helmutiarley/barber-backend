@@ -3,11 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Cradle } from '../../src/container';
 import { CloudflareDns } from '../../src/lib/cloudflare-dns';
 
-function makeClient(overrides: { token?: string | null; zoneId?: string | null } = {}) {
+function makeClient(
+  overrides: { token?: string | null; zoneId?: string | null; serverIp?: string | null } = {},
+) {
   return new CloudflareDns({
     config: {
       cloudflareApiToken: overrides.token === undefined ? 'cf-token' : overrides.token,
       cloudflareZoneId: overrides.zoneId === undefined ? 'zone-1' : overrides.zoneId,
+      serverIp: overrides.serverIp === undefined ? '2.57.91.91' : overrides.serverIp,
     },
     logger: pino({ level: 'silent' }),
   } as unknown as Cradle);
@@ -24,12 +27,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('CloudflareDns.ensureCname', () => {
+describe('CloudflareDns.ensureARecord', () => {
   it('skips when no token is configured', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
 
-    const status = await makeClient({ token: null }).ensureCname(
+    const status = await makeClient({ token: null }).ensureARecord(
       'nova.barbearia360.dev',
       'barbearia360.dev',
     );
@@ -38,24 +41,37 @@ describe('CloudflareDns.ensureCname', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('creates a DNS-only CNAME pointing at the zone apex', async () => {
+  it('skips when the server IP is not configured', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const status = await makeClient({ serverIp: null }).ensureARecord(
+      'nova.barbearia360.dev',
+      'barbearia360.dev',
+    );
+
+    expect(status).toBe('skipped');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('creates a proxied A record pointing at the server IP', async () => {
     const fetchSpy = vi
       .fn()
       .mockResolvedValue(jsonResponse({ success: true, errors: [], result: { id: 'rec-1' } }));
     vi.stubGlobal('fetch', fetchSpy);
 
-    const status = await makeClient().ensureCname('nova.barbearia360.dev', 'barbearia360.dev');
+    const status = await makeClient().ensureARecord('nova.barbearia360.dev', 'barbearia360.dev');
 
     expect(status).toBe('created');
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe('https://api.cloudflare.com/client/v4/zones/zone-1/dns_records');
     expect(init.headers.authorization).toBe('Bearer cf-token');
     expect(JSON.parse(init.body)).toEqual({
-      type: 'CNAME',
+      type: 'A',
       name: 'nova.barbearia360.dev',
-      content: 'barbearia360.dev',
+      content: '2.57.91.91',
       ttl: 1,
-      proxied: false,
+      proxied: true,
     });
   });
 
@@ -71,7 +87,7 @@ describe('CloudflareDns.ensureCname', () => {
       ),
     );
 
-    const status = await makeClient().ensureCname('nova.barbearia360.dev', 'barbearia360.dev');
+    const status = await makeClient().ensureARecord('nova.barbearia360.dev', 'barbearia360.dev');
 
     expect(status).toBe('exists');
   });
@@ -88,7 +104,7 @@ describe('CloudflareDns.ensureCname', () => {
       ),
     );
 
-    const status = await makeClient().ensureCname('nova.barbearia360.dev', 'barbearia360.dev');
+    const status = await makeClient().ensureARecord('nova.barbearia360.dev', 'barbearia360.dev');
 
     expect(status).toBe('failed');
   });
@@ -104,7 +120,7 @@ describe('CloudflareDns.ensureCname', () => {
       );
     vi.stubGlobal('fetch', fetchSpy);
 
-    const status = await makeClient({ zoneId: null }).ensureCname(
+    const status = await makeClient({ zoneId: null }).ensureARecord(
       'nova.barbearia360.dev',
       'barbearia360.dev',
     );
@@ -130,7 +146,7 @@ describe('CloudflareDns.ensureCname', () => {
       ),
     );
 
-    const status = await makeClient({ zoneId: null }).ensureCname(
+    const status = await makeClient({ zoneId: null }).ensureARecord(
       'nova.barbearia360.dev',
       'barbearia360.dev',
     );

@@ -32,6 +32,7 @@ const envSchema = z.object({
 
   CF_API_TOKEN: z.string().default(''),
   CF_ZONE_ID: z.string().default(''),
+  SERVER_IP: z.string().default(''),
 });
 
 export type LogLevel = z.infer<typeof envSchema>['LOG_LEVEL'];
@@ -57,6 +58,7 @@ export interface AppConfig {
 
   cloudflareApiToken: string | null;
   cloudflareZoneId: string | null;
+  serverIp: string | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -90,5 +92,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     shopCacheTtlMs: result.data.SHOP_CACHE_TTL_MS,
     cloudflareApiToken: result.data.CF_API_TOKEN.trim() || null,
     cloudflareZoneId: result.data.CF_ZONE_ID.trim() || null,
+    serverIp: result.data.SERVER_IP.trim() || null,
   };
 }

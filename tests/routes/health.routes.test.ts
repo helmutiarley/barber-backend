@@ -22,6 +22,7 @@ const testConfig: AppConfig = {
   shopCacheTtlMs: 0,
   cloudflareApiToken: null,
   cloudflareZoneId: null,
+  serverIp: null,
 };
 
 function buildTestApp(dataSource: Partial<DataSource>) {
