@@ -6,7 +6,7 @@ import { Service } from '../entities/service.entity';
 import { Shop } from '../entities/shop.entity';
 import { User } from '../entities/user.entity';
 import { ConflictError, NotFoundError, ValidationError } from '../errors/app-error';
-import type { CloudflareDns, DnsRecordStatus } from '../lib/cloudflare-dns';
+import type { CloudflareDns, DnsDeleteStatus, DnsRecordStatus } from '../lib/cloudflare-dns';
 import { hashPassword } from '../lib/password';
 import type { ShopsRepository, ShopChanges } from '../repositories/shops.repository';
 
@@ -42,6 +42,10 @@ export interface ShopWithStatsDto extends ShopDto {
 
 export interface CreatedShopDto extends ShopDto {
   dnsRecord: DnsRecordStatus;
+}
+
+export interface DeletedShopDto extends ShopDto {
+  dnsRecord: DnsDeleteStatus;
 }
 
 export interface DomainCheckResult {
@@ -169,6 +173,18 @@ export class PlatformService {
       }
       throw error;
     }
+  }
+
+  async remove(id: string): Promise<DeletedShopDto> {
+    const shop = await this.shopsRepository.softDelete(id);
+    if (!shop) {
+      throw new NotFoundError(`Shop ${id} not found`);
+    }
+
+    const zoneName = shop.domain.split('.').slice(1).join('.');
+    const dnsRecord = await this.cloudflareDns.deleteARecord(shop.domain, zoneName);
+
+    return { ...this.toDto(shop), dnsRecord };
   }
 
   async update(id: string, changes: ShopChanges): Promise<ShopDto> {

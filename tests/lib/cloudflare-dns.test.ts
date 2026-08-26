@@ -154,3 +154,72 @@ describe('CloudflareDns.ensureARecord', () => {
     expect(status).toBe('failed');
   });
 });
+
+describe('CloudflareDns.deleteARecord', () => {
+  it('skips when no token is configured', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const status = await makeClient({ token: null }).deleteARecord(
+      'nova.barbearia360.dev',
+      'barbearia360.dev',
+    );
+
+    expect(status).toBe('skipped');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('lists the records by name and deletes the matching one', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, errors: [], result: [{ id: 'rec-1' }] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ result: { id: 'rec-1' } }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const status = await makeClient().deleteARecord('nova.barbearia360.dev', 'barbearia360.dev');
+
+    expect(status).toBe('deleted');
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'https://api.cloudflare.com/client/v4/zones/zone-1/dns_records?type=A&name=nova.barbearia360.dev',
+    );
+    expect(fetchSpy.mock.calls[0][1].method).toBe('GET');
+    expect(fetchSpy.mock.calls[1][0]).toBe(
+      'https://api.cloudflare.com/client/v4/zones/zone-1/dns_records/rec-1',
+    );
+    expect(fetchSpy.mock.calls[1][1].method).toBe('DELETE');
+  });
+
+  it('reports missing when no record matches the name', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ success: true, errors: [], result: [] }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const status = await makeClient().deleteARecord('nova.barbearia360.dev', 'barbearia360.dev');
+
+    expect(status).toBe('missing');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports failure when the deletion is rejected', async () => {
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ success: true, errors: [], result: [{ id: 'rec-1' }] }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: false,
+          errors: [{ code: 10000, message: 'Authentication error' }],
+          result: null,
+        }),
+      );
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const status = await makeClient().deleteARecord('nova.barbearia360.dev', 'barbearia360.dev');
+
+    expect(status).toBe('failed');
+  });
+});

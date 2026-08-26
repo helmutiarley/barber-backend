@@ -55,5 +55,13 @@ export function platformRoutes(config: AppConfig): Router {
     wrapHandler('platformController.update'),
   );
 
+  router.delete(
+    '/shops/:id',
+    authenticate(config),
+    authorize('SUPER_ADMIN'),
+    validate({ params: shopIdParamsSchema }),
+    wrapHandler('platformController.remove'),
+  );
+
   return router;
 }

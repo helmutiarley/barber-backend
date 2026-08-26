@@ -39,6 +39,12 @@ export class PlatformController {
     res.json({ data: await this.platformService.checkDomains(id, req.hostname.toLowerCase()) });
   };
 
+  remove = async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validated.params as ShopIdParams;
+
+    res.json({ data: await this.platformService.remove(id) });
+  };
+
   update = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.validated.params as ShopIdParams;
     const body = req.validated.body as UpdateShopBody;

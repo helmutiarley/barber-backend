@@ -253,6 +253,104 @@ describe('platform routes', () => {
     });
   });
 
+  describe('DELETE /v1/platform/shops/:id', () => {
+    it('soft-deletes the shop, hides it, and frees its slug and domain', async () => {
+      const { authHeader } = await superAdmin();
+
+      const created = await request(app)
+        .post('/v1/platform/shops')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader)
+        .send({ ...newShop, customDomain: 'nova.example.com' });
+      const shopId = created.body.data.id as string;
+
+      const deleted = await request(app)
+        .delete(`/v1/platform/shops/${shopId}`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader);
+
+      expect(deleted.status).toBe(200);
+      expect(deleted.body.data).toMatchObject({
+        id: shopId,
+        active: false,
+        dnsRecord: 'skipped',
+      });
+
+      const fetched = await request(app)
+        .get(`/v1/platform/shops/${shopId}`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader);
+      expect(fetched.status).toBe(404);
+
+      const list = await request(app)
+        .get('/v1/platform/shops')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader);
+      expect(
+        list.body.data.find((shop: { id: string }) => shop.id === shopId),
+      ).toBeUndefined();
+
+      const row = await dataSource.query(
+        'SELECT deleted_at, active FROM shops WHERE id = $1',
+        [shopId],
+      );
+      expect(row[0].deleted_at).not.toBeNull();
+      expect(row[0].active).toBe(false);
+
+      const recreated = await request(app)
+        .post('/v1/platform/shops')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader)
+        .send({ ...newShop, owner: { ...newShop.owner, email: 'nova2@nova.local' } });
+      expect(recreated.status).toBe(201);
+    });
+
+    it('takes the shop domain offline immediately', async () => {
+      const { authHeader } = await superAdmin();
+
+      const created = await request(app)
+        .post('/v1/platform/shops')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader)
+        .send({ ...newShop, customDomain: 'nova.example.com' });
+
+      await request(app)
+        .delete(`/v1/platform/shops/${created.body.data.id}`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader);
+
+      const login = await request(app)
+        .post('/v1/auth/login')
+        .set('Host', 'nova.example.com')
+        .send({ email: newShop.owner.email, password: newShop.owner.password });
+
+      expect(login.status).toBe(404);
+    });
+
+    it('returns 404 when the shop is already deleted', async () => {
+      const { authHeader } = await superAdmin();
+
+      const created = await request(app)
+        .post('/v1/platform/shops')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader)
+        .send(newShop);
+      const shopId = created.body.data.id as string;
+
+      await request(app)
+        .delete(`/v1/platform/shops/${shopId}`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader);
+
+      const again = await request(app)
+        .delete(`/v1/platform/shops/${shopId}`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader);
+
+      expect(again.status).toBe(404);
+    });
+  });
+
   describe('GET /v1/internal/tls-check', () => {
     it('approves the test shop custom domain', async () => {
       const response = await request(app).get(

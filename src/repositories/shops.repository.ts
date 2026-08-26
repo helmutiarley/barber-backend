@@ -1,4 +1,4 @@
-import type { Repository } from 'typeorm';
+import { IsNull, type Repository } from 'typeorm';
 import type { Cradle } from '../container';
 import { Shop } from '../entities/shop.entity';
 
@@ -35,15 +35,20 @@ export class ShopsRepository {
   }
 
   async findById(id: string): Promise<Shop | null> {
-    return this.repository.findOneBy({ id });
+    return this.repository.findOneBy({ id, deletedAt: IsNull() });
   }
 
   async findByHost(host: string): Promise<Shop | null> {
-    return this.repository.findOne({ where: [{ domain: host }, { customDomain: host }] });
+    return this.repository.findOne({
+      where: [
+        { domain: host, deletedAt: IsNull() },
+        { customDomain: host, deletedAt: IsNull() },
+      ],
+    });
   }
 
   async findMany(): Promise<Shop[]> {
-    return this.repository.find({ order: { createdAt: 'DESC' } });
+    return this.repository.find({ where: { deletedAt: IsNull() }, order: { createdAt: 'DESC' } });
   }
 
   async create(data: NewShop): Promise<Shop> {
@@ -52,10 +57,21 @@ export class ShopsRepository {
 
   async update(id: string, changes: ShopChanges): Promise<Shop | null> {
     if (Object.keys(changes).length > 0) {
-      await this.repository.update({ id }, changes);
+      await this.repository.update({ id, deletedAt: IsNull() }, changes);
     }
 
     return this.findById(id);
+  }
+
+  async softDelete(id: string): Promise<Shop | null> {
+    const shop = await this.findById(id);
+    if (!shop) {
+      return null;
+    }
+
+    await this.repository.update({ id }, { deletedAt: new Date(), active: false });
+
+    return this.repository.findOneBy({ id });
   }
 
   async stats(): Promise<ShopStats[]> {
@@ -63,7 +79,8 @@ export class ShopsRepository {
       `SELECT s.id AS "shopId",
               (SELECT COUNT(*) FROM users u WHERE u.shop_id = s.id)::text AS "users",
               (SELECT COUNT(*) FROM appointments a WHERE a.shop_id = s.id)::text AS "appointments"
-       FROM shops s`,
+       FROM shops s
+       WHERE s.deleted_at IS NULL`,
     );
 
     return rows.map((row) => ({

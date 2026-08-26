@@ -3,6 +3,7 @@ import type { AppConfig } from '../config';
 import type { Cradle } from '../container';
 
 export type DnsRecordStatus = 'created' | 'exists' | 'failed' | 'skipped';
+export type DnsDeleteStatus = 'deleted' | 'missing' | 'failed' | 'skipped';
 
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 const RECORD_EXISTS_CODES = new Set([81053, 81057]);
@@ -36,11 +37,14 @@ export class CloudflareDns {
     try {
       const zoneId = await this.resolveZoneId(zoneName);
       const response = await this.request<{ id: string }>(`/zones/${zoneId}/dns_records`, {
-        type: 'A',
-        name,
-        content: this.config.serverIp,
-        ttl: 1,
-        proxied: true,
+        method: 'POST',
+        body: {
+          type: 'A',
+          name,
+          content: this.config.serverIp,
+          ttl: 1,
+          proxied: true,
+        },
       });
 
       if (response.success) {
@@ -56,6 +60,50 @@ export class CloudflareDns {
       return 'failed';
     } catch (error) {
       this.logger.warn({ name, err: error }, 'Cloudflare DNS record creation failed');
+      return 'failed';
+    }
+  }
+
+  async deleteARecord(name: string, zoneName: string): Promise<DnsDeleteStatus> {
+    if (!this.config.cloudflareApiToken) {
+      return 'skipped';
+    }
+
+    try {
+      const zoneId = await this.resolveZoneId(zoneName);
+      const list = await this.request<{ id: string }[]>(
+        `/zones/${zoneId}/dns_records?type=A&name=${encodeURIComponent(name)}`,
+      );
+
+      if (!list.success) {
+        this.logger.warn({ name, errors: list.errors }, 'Cloudflare DNS record lookup failed');
+        return 'failed';
+      }
+
+      const records = list.result ?? [];
+      if (records.length === 0) {
+        return 'missing';
+      }
+
+      for (const record of records) {
+        const response = await this.request<{ id: string }>(
+          `/zones/${zoneId}/dns_records/${record.id}`,
+          { method: 'DELETE' },
+        );
+
+        if (response.success === false) {
+          this.logger.warn(
+            { name, recordId: record.id, errors: response.errors },
+            'Cloudflare DNS record deletion failed',
+          );
+          return 'failed';
+        }
+      }
+
+      this.logger.info({ name, zoneName }, 'deleted Cloudflare DNS record');
+      return 'deleted';
+    } catch (error) {
+      this.logger.warn({ name, err: error }, 'Cloudflare DNS record deletion failed');
       return 'failed';
     }
   }
@@ -86,14 +134,17 @@ export class CloudflareDns {
     return zone.id;
   }
 
-  private async request<T>(path: string, body?: unknown): Promise<CloudflareResponse<T>> {
+  private async request<T>(
+    path: string,
+    init: { method?: string; body?: unknown } = {},
+  ): Promise<CloudflareResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
-      method: body ? 'POST' : 'GET',
+      method: init.method ?? 'GET',
       headers: {
         authorization: `Bearer ${this.config.cloudflareApiToken}`,
         'content-type': 'application/json',
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: init.body ? JSON.stringify(init.body) : undefined,
       signal: AbortSignal.timeout(10_000),
     });
 
