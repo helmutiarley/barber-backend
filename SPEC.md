@@ -8,7 +8,7 @@
 | ------------ | -------------------------------------------------------------------------------------------------- |
 | Runtime      | Node.js ≥ 24, TypeScript (strict mode)                                                             |
 | HTTP         | Express                                                                                            |
-| ORM          | **TypeORM 0.3.x** — decorator entities         |
+| ORM          | **TypeORM 0.3.x** — decorator entities                                                             |
 | Database     | PostgreSQL (`pg` driver)                                                                           |
 | Schema       | TypeORM migrations (generated from entity diffs, reviewed, committed). `synchronize: false` always |
 | Validation   | Zod (at the HTTP boundary only)                                                                    |
