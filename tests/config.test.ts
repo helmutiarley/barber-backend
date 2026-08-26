@@ -27,9 +27,6 @@ describe('loadConfig', () => {
       shopsBaseDomain: 'barbearia360.app',
       platformHosts: ['crm.barbearia360.app', 'crm.barbearia360.dev'],
       shopCacheTtlMs: 30_000,
-      cloudflareApiToken: null,
-      cloudflareZoneId: null,
-      serverIp: null,
     });
   });
 

@@ -20,9 +20,6 @@ const testConfig: AppConfig = {
   shopsBaseDomain: 'test.local',
   platformHosts: ['127.0.0.1'],
   shopCacheTtlMs: 0,
-  cloudflareApiToken: null,
-  cloudflareZoneId: null,
-  serverIp: null,
 };
 
 function buildTestApp(dataSource: Partial<DataSource>) {

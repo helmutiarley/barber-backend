@@ -6,7 +6,6 @@ import { Service } from '../entities/service.entity';
 import { Shop } from '../entities/shop.entity';
 import { User } from '../entities/user.entity';
 import { ConflictError, NotFoundError, ValidationError } from '../errors/app-error';
-import type { CloudflareDns, DnsDeleteStatus, DnsRecordStatus } from '../lib/cloudflare-dns';
 import { hashPassword } from '../lib/password';
 import type { ShopsRepository, ShopChanges } from '../repositories/shops.repository';
 
@@ -38,14 +37,6 @@ export interface ShopDto {
 export interface ShopWithStatsDto extends ShopDto {
   users: number;
   appointments: number;
-}
-
-export interface CreatedShopDto extends ShopDto {
-  dnsRecord: DnsRecordStatus;
-}
-
-export interface DeletedShopDto extends ShopDto {
-  dnsRecord: DnsDeleteStatus;
 }
 
 export interface DomainCheckResult {
@@ -83,13 +74,11 @@ export class PlatformService {
   private readonly dataSource: DataSource;
   private readonly shopsRepository: ShopsRepository;
   private readonly config: AppConfig;
-  private readonly cloudflareDns: CloudflareDns;
 
-  constructor({ dataSource, shopsRepository, config, cloudflareDns }: Cradle) {
+  constructor({ dataSource, shopsRepository, config }: Cradle) {
     this.dataSource = dataSource;
     this.shopsRepository = shopsRepository;
     this.config = config;
-    this.cloudflareDns = cloudflareDns;
   }
 
   async list(): Promise<ShopWithStatsDto[]> {
@@ -121,7 +110,7 @@ export class PlatformService {
     };
   }
 
-  async create(input: CreateShopInput, platformHost?: string): Promise<CreatedShopDto> {
+  async create(input: CreateShopInput, platformHost?: string): Promise<ShopDto> {
     if (RESERVED_SLUGS.has(input.slug)) {
       throw new ValidationError(`Slug "${input.slug}" is reserved`);
     }
@@ -164,9 +153,7 @@ export class PlatformService {
         return created;
       });
 
-      const dnsRecord = await this.cloudflareDns.ensureARecord(shop.domain, baseDomain);
-
-      return { ...this.toDto(shop), dnsRecord };
+      return this.toDto(shop);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictError('Slug or custom domain is already in use');
@@ -175,16 +162,13 @@ export class PlatformService {
     }
   }
 
-  async remove(id: string): Promise<DeletedShopDto> {
+  async remove(id: string): Promise<ShopDto> {
     const shop = await this.shopsRepository.softDelete(id);
     if (!shop) {
       throw new NotFoundError(`Shop ${id} not found`);
     }
 
-    const zoneName = shop.domain.split('.').slice(1).join('.');
-    const dnsRecord = await this.cloudflareDns.deleteARecord(shop.domain, zoneName);
-
-    return { ...this.toDto(shop), dnsRecord };
+    return this.toDto(shop);
   }
 
   async update(id: string, changes: ShopChanges): Promise<ShopDto> {

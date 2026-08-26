@@ -44,11 +44,6 @@ services:
       # Only used when the multi-tenant migration runs against a database that
       # already has data: domain of the "default" shop that adopts those rows.
       DEFAULT_SHOP_DOMAIN: ${DEFAULT_SHOP_DOMAIN:-}
-      # Cloudflare DNS automation: creates {slug}.{base} records on shop
-      # creation. Empty token disables it.
-      CF_API_TOKEN: ${CF_API_TOKEN:-}
-      CF_ZONE_ID: ${CF_ZONE_ID:-}
-      SERVER_IP: ${SERVER_IP:-}
     healthcheck:
       test:
         [

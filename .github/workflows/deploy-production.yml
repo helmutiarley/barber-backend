@@ -65,16 +65,6 @@ jobs:
             cp /tmp/barber-deploy/docker-compose.yml /opt/barber/prod/docker-compose.yml
             cp /tmp/barber-deploy/update-image.sh /opt/barber/update-image.sh
             chmod +x /opt/barber/update-image.sh
-            touch /opt/barber/prod/.env
-            grep -q '^CF_API_TOKEN=' /opt/barber/prod/.env \
-              && sed -i 's|^CF_API_TOKEN=.*|CF_API_TOKEN=${{ secrets.CF_API_TOKEN }}|' /opt/barber/prod/.env \
-              || echo 'CF_API_TOKEN=${{ secrets.CF_API_TOKEN }}' >> /opt/barber/prod/.env
-            grep -q '^CF_ZONE_ID=' /opt/barber/prod/.env \
-              && sed -i 's|^CF_ZONE_ID=.*|CF_ZONE_ID=${{ secrets.PROD_ZONE_ID }}|' /opt/barber/prod/.env \
-              || echo 'CF_ZONE_ID=${{ secrets.PROD_ZONE_ID }}' >> /opt/barber/prod/.env
-            grep -q '^SERVER_IP=' /opt/barber/prod/.env \
-              && sed -i 's|^SERVER_IP=.*|SERVER_IP=${{ secrets.VPS_HOST }}|' /opt/barber/prod/.env \
-              || echo 'SERVER_IP=${{ secrets.VPS_HOST }}' >> /opt/barber/prod/.env
             docker network create barber-proxy 2>/dev/null || true
             cd /opt/barber/proxy
             docker compose up -d

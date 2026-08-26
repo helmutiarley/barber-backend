@@ -93,7 +93,6 @@ describe('platform routes', () => {
         slug: 'nova',
         domain: `nova.${config.shopsBaseDomain}`,
         active: true,
-        dnsRecord: 'skipped',
       });
 
       const owner = await dataSource
@@ -273,7 +272,6 @@ describe('platform routes', () => {
       expect(deleted.body.data).toMatchObject({
         id: shopId,
         active: false,
-        dnsRecord: 'skipped',
       });
 
       const fetched = await request(app)

@@ -29,10 +29,6 @@ const envSchema = z.object({
   SHOPS_BASE_DOMAIN: z.string().default('barbearia360.app'),
   PLATFORM_HOSTS: z.string().default('crm.barbearia360.app,crm.barbearia360.dev'),
   SHOP_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(30_000),
-
-  CF_API_TOKEN: z.string().default(''),
-  CF_ZONE_ID: z.string().default(''),
-  SERVER_IP: z.string().default(''),
 });
 
 export type LogLevel = z.infer<typeof envSchema>['LOG_LEVEL'];
@@ -55,10 +51,6 @@ export interface AppConfig {
   shopsBaseDomain: string;
   platformHosts: string[];
   shopCacheTtlMs: number;
-
-  cloudflareApiToken: string | null;
-  cloudflareZoneId: string | null;
-  serverIp: string | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -90,8 +82,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .map((host) => host.trim().toLowerCase())
       .filter((host) => host.length > 0),
     shopCacheTtlMs: result.data.SHOP_CACHE_TTL_MS,
-    cloudflareApiToken: result.data.CF_API_TOKEN.trim() || null,
-    cloudflareZoneId: result.data.CF_ZONE_ID.trim() || null,
-    serverIp: result.data.SERVER_IP.trim() || null,
   };
 }
