@@ -1,16 +1,27 @@
 import { z } from 'zod';
 import { APPOINTMENT_STATUSES } from '../entities/enums';
 
-export const createAppointmentSchema = z.object({
-
-  clientId: z.uuid().optional(),
-  barberId: z.uuid(),
-  serviceId: z.uuid(),
-  startsAt: z.coerce.date(),
-  notes: z.string().trim().min(1).max(1000).optional(),
-
-  force: z.boolean().optional(),
+const walkInSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  phone: z.string().trim().min(8).max(20),
 });
+
+export const createAppointmentSchema = z
+  .object({
+    clientId: z.uuid().optional(),
+
+    walkIn: walkInSchema.optional(),
+    barberId: z.uuid(),
+    serviceId: z.uuid(),
+    startsAt: z.coerce.date(),
+    notes: z.string().trim().min(1).max(1000).optional(),
+
+    force: z.boolean().optional(),
+  })
+  .refine((body) => !(body.clientId && body.walkIn), {
+    message: 'send either clientId or walkIn, not both',
+    path: ['walkIn'],
+  });
 
 export const appointmentIdParamsSchema = z.object({
   id: z.uuid(),

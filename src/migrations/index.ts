@@ -11,6 +11,7 @@ import { Products1785884242732 } from './1785884242732-Products';
 import { ProductSales1785886385723 } from './1785886385723-ProductSales';
 import { MultiTenantShops1787620000000 } from './1787620000000-MultiTenantShops';
 import { ShopSoftDelete1787710000000 } from './1787710000000-ShopSoftDelete';
+import { WalkInClients1787800000000 } from './1787800000000-WalkInClients';
 
 export const migrations = [
   InitialSchema1785084994714,
@@ -26,4 +27,5 @@ export const migrations = [
   ProductSales1785886385723,
   MultiTenantShops1787620000000,
   ShopSoftDelete1787710000000,
+  WalkInClients1787800000000,
 ];

@@ -34,6 +34,7 @@ export class AppointmentsController {
     const appointment = await this.appointmentsService.createAppointment(
       {
         clientId: body.clientId,
+        walkIn: body.walkIn,
         barberId: body.barberId,
         serviceId: body.serviceId,
         startsAt: body.startsAt,

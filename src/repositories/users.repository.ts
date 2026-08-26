@@ -1,11 +1,11 @@
-import { IsNull, type FindOptionsWhere, type Repository } from 'typeorm';
+import { IsNull, type EntityManager, type FindOptionsWhere, type Repository } from 'typeorm';
 import type { Cradle } from '../container';
 import type { UserRole } from '../entities/enums';
 import { User } from '../entities/user.entity';
 
 export interface NewUser {
   name: string;
-  email: string;
+  email?: string | null;
   phone?: string | null;
   passwordHash?: string | null;
   role: UserRole;
@@ -48,9 +48,31 @@ export class UsersRepository {
       .getOne();
   }
 
-  async create(data: NewUser): Promise<User> {
-    return this.repository.save(
-      this.repository.create({ phone: null, passwordHash: null, shopId: this.shopId, ...data }),
+  async findActiveClientByPhone(phone: string, manager?: EntityManager): Promise<User | null> {
+    const digits = onlyDigits(phone);
+    if (digits.length === 0) {
+      return null;
+    }
+
+    return this.scopedQuery(manager)
+      .andWhere('user.role = :role', { role: 'CLIENT' })
+      .andWhere('user.active = true')
+      .andWhere(`regexp_replace(user.phone, '\\D', '', 'g') = :digits`, { digits })
+      .orderBy('user.createdAt', 'ASC')
+      .getOne();
+  }
+
+  async create(data: NewUser, manager?: EntityManager): Promise<User> {
+    const repository = this.repo(manager);
+
+    return repository.save(
+      repository.create({
+        email: null,
+        phone: null,
+        passwordHash: null,
+        shopId: this.shopId,
+        ...data,
+      }),
     );
   }
 
@@ -70,15 +92,23 @@ export class UsersRepository {
     return this.repository.find({ where, order: { createdAt: 'DESC' } });
   }
 
+  private repo(manager?: EntityManager): Repository<User> {
+    return manager ? manager.getRepository(User) : this.repository;
+  }
+
   private shopWhere(): FindOptionsWhere<User> {
     return { shopId: this.shopId === null ? IsNull() : this.shopId };
   }
 
-  private scopedQuery() {
-    const query = this.repository.createQueryBuilder('user');
+  private scopedQuery(manager?: EntityManager) {
+    const query = this.repo(manager).createQueryBuilder('user');
 
     return this.shopId === null
       ? query.where('user.shopId IS NULL')
       : query.where('user.shopId = :shopId', { shopId: this.shopId });
   }
+}
+
+export function onlyDigits(phone: string): string {
+  return phone.replace(/\D/g, '');
 }

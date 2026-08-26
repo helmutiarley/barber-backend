@@ -5,6 +5,7 @@ import { ClientProfile } from '../entities/client-profile.entity';
 import { User } from '../entities/user.entity';
 import { decimalStringToCents } from '../lib/money';
 import { requireShopId } from '../lib/shop-context';
+import { onlyDigits } from './users.repository';
 
 export interface ProfileChanges {
   birthday?: string | null;
@@ -29,7 +30,7 @@ export interface Page {
 export interface ClientRow {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
   active: boolean;
   birthday: string | null;
@@ -44,6 +45,8 @@ export interface ClientStats {
   averageTicket: number | null;
   noShows: number;
 }
+
+const MIN_PHONE_SEARCH_DIGITS = 3;
 
 interface RawStats {
   visits: string;
@@ -137,9 +140,14 @@ export class ClientProfilesRepository {
       .andWhere('u.shop_id = :shopId', { shopId: this.shopId });
 
     if (filters.search) {
-      query.andWhere('(u.name ILIKE :q OR u.email ILIKE :q OR u.phone ILIKE :q)', {
-        q: `%${escapeLike(filters.search)}%`,
-      });
+      const digits = onlyDigits(filters.search);
+
+      query.andWhere(
+        digits.length >= MIN_PHONE_SEARCH_DIGITS
+          ? `(u.name ILIKE :q OR u.email ILIKE :q OR regexp_replace(u.phone, '\\D', '', 'g') LIKE :digits)`
+          : '(u.name ILIKE :q OR u.email ILIKE :q OR u.phone ILIKE :q)',
+        { q: `%${escapeLike(filters.search)}%`, digits: `%${digits}%` },
+      );
     }
 
     if (filters.birthdayMonth !== undefined) {

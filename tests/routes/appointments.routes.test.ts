@@ -7,13 +7,14 @@ import { loadConfig, type AppConfig } from '../../src/config';
 import { buildContainer } from '../../src/container';
 import { Barber } from '../../src/entities/barber.entity';
 import { Service } from '../../src/entities/service.entity';
-import type { User } from '../../src/entities/user.entity';
+import { User } from '../../src/entities/user.entity';
 import { getTestDataSource, truncateAll } from '../support/db';
 import {
   makeAuthenticatedUser,
   makeBarber,
   makeCommissionRule,
   makeService,
+  makeUser,
   makeWorkingWeek,
 } from '../support/factories';
 
@@ -167,6 +168,116 @@ describe('appointments routes', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.data.clientId).toBe(client.id);
+    });
+
+    describe('walk-in', () => {
+      const WALK_IN = { name: 'Cliente Balc\u00e3o', phone: '11988887777' };
+
+      let receptionAuth: string;
+
+      beforeEach(async () => {
+        receptionAuth = (await makeAuthenticatedUser(dataSource, config, { role: 'MANAGER' }))
+          .authHeader;
+      });
+
+      function clientsOnThatPhone(): Promise<User[]> {
+        return dataSource.getRepository(User).findBy({ phone: WALK_IN.phone, role: 'CLIENT' });
+      }
+
+      it('registers the client from name and phone alone', async () => {
+        const response = await book({ walkIn: WALK_IN }, receptionAuth);
+
+        expect(response.status).toBe(201);
+
+        const [registered] = await clientsOnThatPhone();
+        expect(registered).toMatchObject({ name: WALK_IN.name, phone: WALK_IN.phone, email: null });
+        expect(response.body.data.clientId).toBe(registered.id);
+      });
+
+      it('leaves the walk-in unable to log in', async () => {
+        await book({ walkIn: WALK_IN }, receptionAuth);
+        const [registered] = await clientsOnThatPhone();
+
+        const stored = await dataSource
+          .getRepository(User)
+          .createQueryBuilder('user')
+          .addSelect('user.passwordHash')
+          .where('user.id = :id', { id: registered.id })
+          .getOne();
+
+        expect(stored?.passwordHash).toBeNull();
+      });
+
+      it('books the client already on that phone instead of a second one', async () => {
+        const first = await book({ walkIn: WALK_IN }, receptionAuth);
+
+        const second = await book(
+          { walkIn: { ...WALK_IN, name: 'Nome Digitado Diferente' }, startsAt: AT_11_00 },
+          receptionAuth,
+        );
+
+        expect(second.status).toBe(201);
+        expect(second.body.data.clientId).toBe(first.body.data.clientId);
+        expect(await clientsOnThatPhone()).toHaveLength(1);
+      });
+
+      it('books the client stored under the same digits, however the phone is typed', async () => {
+        const registered = await makeUser(dataSource, {
+          role: 'CLIENT',
+          name: 'Cliente Antigo',
+          phone: WALK_IN.phone,
+        });
+
+        const response = await book(
+          { walkIn: { name: 'Nome Digitado Diferente', phone: '(11) 98888-7777' } },
+          receptionAuth,
+        );
+
+        expect(response.status).toBe(201);
+        expect(response.body.data.clientId).toBe(registered.id);
+      });
+
+      it('finds the walk-in by phone in the client list, punctuation and all', async () => {
+        await book({ walkIn: WALK_IN }, receptionAuth);
+
+        const response = await request(app)
+          .get(`/v1/clients?search=${encodeURIComponent('(11) 98888-7777')}`)
+          .set('Authorization', receptionAuth);
+
+        expect(response.body.data).toMatchObject([
+          { name: WALK_IN.name, phone: WALK_IN.phone, email: null },
+        ]);
+      });
+
+      it('registers nobody when the slot is already taken', async () => {
+        await book();
+
+        const response = await book({ walkIn: WALK_IN }, receptionAuth);
+
+        expect(response.status).toBe(409);
+        expect(await clientsOnThatPhone()).toHaveLength(0);
+      });
+
+      it('refuses a client registering one', async () => {
+        const response = await book({ walkIn: WALK_IN });
+
+        expect(response.status).toBe(403);
+        expect(await clientsOnThatPhone()).toHaveLength(0);
+      });
+
+      it('rejects a body naming both a client and a walk-in', async () => {
+        const response = await book({ clientId: client.id, walkIn: WALK_IN }, receptionAuth);
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.details).toMatchObject([{ field: 'walkIn' }]);
+      });
+
+      it('rejects a walk-in without a phone', async () => {
+        const response = await book({ walkIn: { name: WALK_IN.name } }, receptionAuth);
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.details).toMatchObject([{ field: 'walkIn.phone' }]);
+      });
     });
 
     describe('availability', () => {

@@ -73,11 +73,12 @@ export class AppointmentsRepository {
       .getMany();
   }
 
-  async create(data: NewAppointment): Promise<Appointment> {
-    const repository = this.repo();
+  async create(data: NewAppointment, manager?: EntityManager): Promise<Appointment> {
+    const repository = this.repo(manager);
 
-    return this.guarded(() =>
-      repository.save(repository.create({ notes: null, shopId: this.shopId, ...data })),
+    return this.guarded(
+      () => repository.save(repository.create({ notes: null, shopId: this.shopId, ...data })),
+      manager,
     );
   }
 

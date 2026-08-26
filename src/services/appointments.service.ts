@@ -1,9 +1,10 @@
-import type { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import type { AppConfig } from '../config';
 import type { Cradle } from '../container';
 import type { Appointment } from '../entities/appointment.entity';
 import type { Barber } from '../entities/barber.entity';
 import type { AppointmentStatus } from '../entities/enums';
+import type { User } from '../entities/user.entity';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors/app-error';
 import type { AuthenticatedUser } from '../lib/actor';
 import type { Clock } from '../lib/clock';
@@ -19,9 +20,16 @@ import type { UsersRepository } from '../repositories/users.repository';
 import type { AvailabilityService } from './availability.service';
 import type { CommissionsService } from './commissions.service';
 
+export interface WalkInClientInput {
+  name: string;
+  phone: string;
+}
+
 export interface CreateAppointmentInput {
 
   clientId?: string;
+
+  walkIn?: WalkInClientInput;
   barberId: string;
   serviceId: string;
   startsAt: Date;
@@ -60,6 +68,10 @@ export interface CancelAppointmentInput {
 
   reason?: string;
 }
+
+type BookingClient =
+  | { kind: 'existing'; id: string }
+  | { kind: 'walkIn'; input: WalkInClientInput };
 
 const STAFF_ROLES = ['ADMIN', 'MANAGER'] as const;
 
@@ -144,7 +156,7 @@ export class AppointmentsService {
     input: CreateAppointmentInput,
     actor: AuthenticatedUser,
   ): Promise<AppointmentDto> {
-    const clientId = this.resolveClientId(input.clientId, actor);
+    const client = this.resolveClient(input, actor);
 
     const service = await this.servicesRepository.findById(input.serviceId);
     if (!service) {
@@ -162,9 +174,8 @@ export class AppointmentsService {
       throw new ConflictError('This barber is not taking appointments');
     }
 
-    const client = await this.usersRepository.findById(clientId);
-    if (!client) {
-      throw new NotFoundError(`Client ${clientId} not found`);
+    if (client.kind === 'existing' && !(await this.usersRepository.findById(client.id))) {
+      throw new NotFoundError(`Client ${client.id} not found`);
     }
 
     const endsAt = new Date(input.startsAt.getTime() + service.durationMinutes * MINUTE_IN_MS);
@@ -177,8 +188,7 @@ export class AppointmentsService {
       actor,
     });
 
-    const appointment = await this.appointmentsRepository.create({
-      clientId: client.id,
+    const booking = {
       barberId: barber.id,
       serviceId: service.id,
       startsAt: input.startsAt,
@@ -187,7 +197,19 @@ export class AppointmentsService {
       durationMinutes: service.durationMinutes,
       notes: input.notes ?? null,
       createdBy: actor.id,
-    });
+    };
+
+    const appointment =
+      client.kind === 'existing'
+        ? await this.appointmentsRepository.create({ ...booking, clientId: client.id })
+        : await withTransaction(this.dataSource, async (manager) => {
+            const walkIn = await this.findOrCreateWalkInClient(client.input, manager);
+
+            return this.appointmentsRepository.create(
+              { ...booking, clientId: walkIn.id },
+              manager,
+            );
+          });
 
     return toDto(appointment);
   }
@@ -339,6 +361,23 @@ export class AppointmentsService {
     });
   }
 
+  private resolveClient(input: CreateAppointmentInput, actor: AuthenticatedUser): BookingClient {
+    if (!input.walkIn) {
+      return { kind: 'existing', id: this.resolveClientId(input.clientId, actor) };
+    }
+
+    if (input.clientId) {
+      throw new ValidationError('A booking names one client, not two', [
+        { field: 'walkIn', message: 'cannot be combined with clientId' },
+      ]);
+    }
+    if (!isStaff(actor)) {
+      throw new ForbiddenError('Only staff may book for a walk-in client');
+    }
+
+    return { kind: 'walkIn', input: input.walkIn };
+  }
+
   private resolveClientId(requested: string | undefined, actor: AuthenticatedUser): string {
     if (!requested || requested === actor.id) {
       return actor.id;
@@ -348,6 +387,21 @@ export class AppointmentsService {
     }
 
     return requested;
+  }
+
+  private async findOrCreateWalkInClient(
+    input: WalkInClientInput,
+    manager: EntityManager,
+  ): Promise<User> {
+    const existing = await this.usersRepository.findActiveClientByPhone(input.phone, manager);
+    if (existing) {
+      return existing;
+    }
+
+    return this.usersRepository.create(
+      { name: input.name, phone: input.phone, role: 'CLIENT' },
+      manager,
+    );
   }
 
   private async assertSlotIsFree(slot: {

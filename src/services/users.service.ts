@@ -9,7 +9,7 @@ import type { BarbersService } from './barbers.service';
 export interface UserDto {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
   role: UserRole;
   active: boolean;

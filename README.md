@@ -105,6 +105,8 @@ curl -s localhost:3000/v1/clients/me/appointments -H "authorization: Bearer $TOK
 
 The client is taken from the token, so `clientId` is only accepted from ADMIN/MANAGER callers booking on someone's behalf. A time outside the barber's working hours, inside their lunch break, over a block, or already taken is refused with 409 — staff can add `"force": true` to book outside the schedule anyway, but nothing lets two appointments share one chair.
 
+Someone who walks in off the street has no account, so reception sends `"walkIn": {"name": "…", "phone": "…"}` in place of `clientId` — sending both is a 400, and a CLIENT sending it at all is a 403. What comes back is an ordinary appointment against a CLIENT row with no email and no password, which is why that row can never log in. The phone is what identifies a client, not the name: the same number books the client already on file rather than a second copy of them, matched on digits alone so `(11) 98888-7777` and `11988887777` are the same person. Client search reads phones the same way. The client is only written once the slot has survived every check, and rolls back with the booking, so a rejected walk-in leaves nobody behind.
+
 ### The rest of the appointment's life
 
 Everything below runs as reception, since confirming and completing belong to the shop:
