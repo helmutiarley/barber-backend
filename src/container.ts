@@ -18,6 +18,7 @@ import { ReportsController } from './controllers/reports.controller';
 import { ServicesController } from './controllers/services.controller';
 import { UsersController } from './controllers/users.controller';
 import { systemClock, type Clock } from './lib/clock';
+import { CloudflareDns } from './lib/cloudflare-dns';
 import type { Logger } from './lib/logger';
 import { AppointmentsRepository } from './repositories/appointments.repository';
 import { BarberBlocksRepository } from './repositories/barber-blocks.repository';
@@ -63,6 +64,7 @@ export interface Cradle {
   logger: Logger;
   dataSource: DataSource;
   clock: Clock;
+  cloudflareDns: CloudflareDns;
 
   currentShop: Shop | null;
 
@@ -141,6 +143,7 @@ export function buildContainer(deps: ContainerDeps): AwilixContainer<Cradle> {
     logger: asValue(deps.logger),
     dataSource: asValue(deps.dataSource),
     clock: asValue(deps.clock ?? systemClock),
+    cloudflareDns: asClass(CloudflareDns).singleton(),
 
     currentShop: asValue(null),
 

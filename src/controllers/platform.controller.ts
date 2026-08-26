@@ -33,6 +33,12 @@ export class PlatformController {
       .json({ data: await this.platformService.create(body, req.hostname.toLowerCase()) });
   };
 
+  domainCheck = async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validated.params as ShopIdParams;
+
+    res.json({ data: await this.platformService.checkDomains(id, req.hostname.toLowerCase()) });
+  };
+
   update = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.validated.params as ShopIdParams;
     const body = req.validated.body as UpdateShopBody;

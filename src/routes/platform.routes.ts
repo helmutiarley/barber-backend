@@ -39,6 +39,14 @@ export function platformRoutes(config: AppConfig): Router {
     wrapHandler('platformController.getById'),
   );
 
+  router.get(
+    '/shops/:id/domain-check',
+    authenticate(config),
+    authorize('SUPER_ADMIN'),
+    validate({ params: shopIdParamsSchema }),
+    wrapHandler('platformController.domainCheck'),
+  );
+
   router.patch(
     '/shops/:id',
     authenticate(config),

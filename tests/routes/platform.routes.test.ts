@@ -93,6 +93,7 @@ describe('platform routes', () => {
         slug: 'nova',
         domain: `nova.${config.shopsBaseDomain}`,
         active: true,
+        dnsRecord: 'skipped',
       });
 
       const owner = await dataSource
@@ -197,6 +198,35 @@ describe('platform routes', () => {
 
       expect(patched.status).toBe(200);
       expect(patched.body.data.active).toBe(false);
+    });
+
+    it('reports DNS and HTTPS status for the shop domains', async () => {
+      const { authHeader } = await superAdmin();
+
+      const created = await request(app)
+        .post('/v1/platform/shops')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader)
+        .send({ ...newShop, customDomain: 'nova.invalid' });
+
+      const response = await request(app)
+        .get(`/v1/platform/shops/${created.body.data.id}/domain-check`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', authHeader);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.active).toBe(true);
+      expect(response.body.data.results).toHaveLength(2);
+
+      const custom = response.body.data.results.find(
+        (result: { kind: string }) => result.kind === 'custom',
+      );
+      expect(custom).toMatchObject({
+        domain: 'nova.invalid',
+        dns: { ips: [] },
+        https: { ok: false, status: null },
+      });
+      expect(typeof custom.https.error).toBe('string');
     });
 
     it('suspending a shop takes its domain offline', async () => {

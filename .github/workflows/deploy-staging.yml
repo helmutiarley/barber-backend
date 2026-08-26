@@ -68,6 +68,13 @@ jobs:
             cp /tmp/barber-deploy/docker-compose.yml /opt/barber/stage/docker-compose.yml
             cp /tmp/barber-deploy/update-image.sh /opt/barber/update-image.sh
             chmod +x /opt/barber/update-image.sh
+            touch /opt/barber/stage/.env
+            grep -q '^CF_API_TOKEN=' /opt/barber/stage/.env \
+              && sed -i 's|^CF_API_TOKEN=.*|CF_API_TOKEN=${{ secrets.CF_API_TOKEN }}|' /opt/barber/stage/.env \
+              || echo 'CF_API_TOKEN=${{ secrets.CF_API_TOKEN }}' >> /opt/barber/stage/.env
+            grep -q '^CF_ZONE_ID=' /opt/barber/stage/.env \
+              && sed -i 's|^CF_ZONE_ID=.*|CF_ZONE_ID=${{ secrets.STAGE_ZONE_ID }}|' /opt/barber/stage/.env \
+              || echo 'CF_ZONE_ID=${{ secrets.STAGE_ZONE_ID }}' >> /opt/barber/stage/.env
             docker network create barber-proxy 2>/dev/null || true
             cd /opt/barber/proxy
             docker compose up -d

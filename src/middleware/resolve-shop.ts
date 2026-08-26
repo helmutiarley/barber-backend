@@ -62,7 +62,11 @@ export function resolveShop(config: AppConfig, shopsRepository: ShopsRepository)
 export function requireShop(): RequestHandler {
   return (req, _res, next) => {
     if (!req.shop) {
-      next(new NotFoundError('No barbershop is registered for this domain'));
+      next(
+        req.isPlatformHost
+          ? new NotFoundError(`Route ${req.method} ${req.path} not found`)
+          : new NotFoundError('No barbershop is registered for this domain'),
+      );
       return;
     }
 

@@ -1,3 +1,4 @@
+import { resolve4, resolve6 } from 'node:dns/promises';
 import type { DataSource } from 'typeorm';
 import type { AppConfig } from '../config';
 import type { Cradle } from '../container';
@@ -5,6 +6,7 @@ import { Service } from '../entities/service.entity';
 import { Shop } from '../entities/shop.entity';
 import { User } from '../entities/user.entity';
 import { ConflictError, NotFoundError, ValidationError } from '../errors/app-error';
+import type { CloudflareDns, DnsRecordStatus } from '../lib/cloudflare-dns';
 import { hashPassword } from '../lib/password';
 import type { ShopsRepository, ShopChanges } from '../repositories/shops.repository';
 
@@ -38,6 +40,30 @@ export interface ShopWithStatsDto extends ShopDto {
   appointments: number;
 }
 
+export interface CreatedShopDto extends ShopDto {
+  dnsRecord: DnsRecordStatus;
+}
+
+export interface DomainCheckResult {
+  domain: string;
+  kind: 'default' | 'custom';
+  dns: {
+    ips: string[];
+    expectedIps: string[];
+    pointsToServer: boolean | null;
+  };
+  https: {
+    ok: boolean;
+    status: number | null;
+    error: string | null;
+  };
+}
+
+export interface DomainCheckDto {
+  active: boolean;
+  results: DomainCheckResult[];
+}
+
 const DEFAULT_SERVICES = [
   { name: 'Corte', description: 'Corte de cabelo tradicional', price: 4500, durationMinutes: 30 },
   { name: 'Barba', description: 'Barba feita na navalha', price: 3000, durationMinutes: 20 },
@@ -53,11 +79,13 @@ export class PlatformService {
   private readonly dataSource: DataSource;
   private readonly shopsRepository: ShopsRepository;
   private readonly config: AppConfig;
+  private readonly cloudflareDns: CloudflareDns;
 
-  constructor({ dataSource, shopsRepository, config }: Cradle) {
+  constructor({ dataSource, shopsRepository, config, cloudflareDns }: Cradle) {
     this.dataSource = dataSource;
     this.shopsRepository = shopsRepository;
     this.config = config;
+    this.cloudflareDns = cloudflareDns;
   }
 
   async list(): Promise<ShopWithStatsDto[]> {
@@ -89,7 +117,7 @@ export class PlatformService {
     };
   }
 
-  async create(input: CreateShopInput, platformHost?: string): Promise<ShopDto> {
+  async create(input: CreateShopInput, platformHost?: string): Promise<CreatedShopDto> {
     if (RESERVED_SLUGS.has(input.slug)) {
       throw new ValidationError(`Slug "${input.slug}" is reserved`);
     }
@@ -132,7 +160,9 @@ export class PlatformService {
         return created;
       });
 
-      return this.toDto(shop);
+      const dnsRecord = await this.cloudflareDns.ensureCname(shop.domain, baseDomain);
+
+      return { ...this.toDto(shop), dnsRecord };
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictError('Slug or custom domain is already in use');
@@ -157,6 +187,38 @@ export class PlatformService {
     }
   }
 
+  async checkDomains(id: string, platformHost?: string): Promise<DomainCheckDto> {
+    const shop = await this.shopsRepository.findById(id);
+    if (!shop) {
+      throw new NotFoundError(`Shop ${id} not found`);
+    }
+
+    const reference =
+      platformHost && platformHost.includes('.') && !isIpAddress(platformHost)
+        ? platformHost
+        : null;
+    const expectedIps = await resolveIps(reference);
+
+    const domains: { domain: string; kind: 'default' | 'custom' }[] = [
+      { domain: shop.domain, kind: 'default' },
+      ...(shop.customDomain ? [{ domain: shop.customDomain, kind: 'custom' as const }] : []),
+    ];
+
+    const results = await Promise.all(
+      domains.map(async ({ domain, kind }) => {
+        const [ips, https] = await Promise.all([resolveIps(domain), probeHttps(domain)]);
+        const pointsToServer =
+          expectedIps.length > 0 && ips.length > 0
+            ? ips.some((ip) => expectedIps.includes(ip))
+            : null;
+
+        return { domain, kind, dns: { ips, expectedIps, pointsToServer }, https };
+      }),
+    );
+
+    return { active: shop.active, results };
+  }
+
   async isDomainServed(domain: string): Promise<boolean> {
     const host = domain.toLowerCase();
 
@@ -177,6 +239,45 @@ export class PlatformService {
       createdAt: shop.createdAt.toISOString(),
     };
   }
+}
+
+function isIpAddress(host: string): boolean {
+  return /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':');
+}
+
+async function resolveIps(host: string | null): Promise<string[]> {
+  if (!host) return [];
+
+  const [v4, v6] = await Promise.allSettled([resolve4(host), resolve6(host)]);
+
+  return [
+    ...(v4.status === 'fulfilled' ? v4.value : []),
+    ...(v6.status === 'fulfilled' ? v6.value : []),
+  ];
+}
+
+async function probeHttps(
+  host: string,
+): Promise<{ ok: boolean; status: number | null; error: string | null }> {
+  try {
+    const response = await fetch(`https://${host}/health`, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(8000),
+    });
+
+    return { ok: response.ok, status: response.status, error: null };
+  } catch (error) {
+    return { ok: false, status: null, error: describeFetchError(error) };
+  }
+}
+
+function describeFetchError(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = (error as Error & { cause?: { code?: string; message?: string } }).cause;
+    return cause?.code ?? cause?.message ?? error.message;
+  }
+
+  return String(error);
 }
 
 function isUniqueViolation(error: unknown): boolean {
