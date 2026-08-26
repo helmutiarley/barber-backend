@@ -17,6 +17,10 @@ export class BarberBlock {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_barber_blocks_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   barberId!: string;
 

@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config';
 import type { Cradle } from '../container';
+import type { Shop } from '../entities/shop.entity';
 import type { User } from '../entities/user.entity';
-import { ConflictError, UnauthorizedError } from '../errors/app-error';
+import { ConflictError, ForbiddenError, UnauthorizedError } from '../errors/app-error';
 import type { Clock } from '../lib/clock';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from '../lib/tokens';
@@ -30,15 +31,21 @@ export class AuthService {
   private readonly refreshTokensRepository: RefreshTokensRepository;
   private readonly config: AppConfig;
   private readonly clock: Clock;
+  private readonly currentShop: Shop | null;
 
-  constructor({ usersRepository, refreshTokensRepository, config, clock }: Cradle) {
+  constructor({ usersRepository, refreshTokensRepository, config, clock, currentShop }: Cradle) {
     this.usersRepository = usersRepository;
     this.refreshTokensRepository = refreshTokensRepository;
     this.config = config;
     this.clock = clock;
+    this.currentShop = currentShop;
   }
 
   async register(input: RegisterInput): Promise<AuthResult> {
+    if (!this.currentShop) {
+      throw new ForbiddenError('Registration is not available on this host');
+    }
+
     const existing = await this.usersRepository.findByEmail(input.email);
     if (existing) {
       throw new ConflictError('This email is already registered');
@@ -115,7 +122,11 @@ export class AuthService {
     });
 
     return {
-      accessToken: signAccessToken(this.config, { sub: user.id, role: user.role }),
+      accessToken: signAccessToken(this.config, {
+        sub: user.id,
+        role: user.role,
+        shopId: user.shopId,
+      }),
       refreshToken,
       user: toUserDto(user),
     };

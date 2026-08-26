@@ -1,4 +1,4 @@
-import type { FindOptionsWhere, Repository } from 'typeorm';
+import { IsNull, type FindOptionsWhere, type Repository } from 'typeorm';
 import type { Cradle } from '../container';
 import type { UserRole } from '../entities/enums';
 import { User } from '../entities/user.entity';
@@ -19,54 +19,66 @@ export interface UserFilters {
 export class UsersRepository {
   private readonly repository: Repository<User>;
 
-  constructor({ dataSource }: Cradle) {
+  private readonly shopId: string | null;
+
+  constructor({ dataSource, currentShop }: Cradle) {
     this.repository = dataSource.getRepository(User);
+    this.shopId = currentShop?.id ?? null;
   }
 
   async findById(id: string): Promise<User | null> {
-    return this.repository.findOneBy({ id });
+    return this.repository.findOneBy({ id, ...this.shopWhere() });
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.repository.findOneBy({ email });
+    return this.repository.findOneBy({ email, ...this.shopWhere() });
   }
 
   async findByEmailWithPassword(email: string): Promise<User | null> {
-    return this.repository
-      .createQueryBuilder('user')
+    return this.scopedQuery()
       .addSelect('user.passwordHash')
-      .where('user.email = :email', { email })
+      .andWhere('user.email = :email', { email })
       .getOne();
   }
 
   async findByIdWithPassword(id: string): Promise<User | null> {
-    return this.repository
-      .createQueryBuilder('user')
+    return this.scopedQuery()
       .addSelect('user.passwordHash')
-      .where('user.id = :id', { id })
+      .andWhere('user.id = :id', { id })
       .getOne();
   }
 
   async create(data: NewUser): Promise<User> {
     return this.repository.save(
-      this.repository.create({ phone: null, passwordHash: null, ...data }),
+      this.repository.create({ phone: null, passwordHash: null, shopId: this.shopId, ...data }),
     );
   }
 
   async update(id: string, data: Partial<NewUser> & { active?: boolean }): Promise<User | null> {
-
     if (Object.keys(data).length > 0) {
-      await this.repository.update({ id }, data);
+      await this.repository.update({ id, ...this.shopWhere() }, data);
     }
 
     return this.findById(id);
   }
 
   async findMany(filters: UserFilters = {}): Promise<User[]> {
-    const where: FindOptionsWhere<User> = {};
+    const where: FindOptionsWhere<User> = { ...this.shopWhere() };
     if (filters.role !== undefined) where.role = filters.role;
     if (filters.active !== undefined) where.active = filters.active;
 
     return this.repository.find({ where, order: { createdAt: 'DESC' } });
+  }
+
+  private shopWhere(): FindOptionsWhere<User> {
+    return { shopId: this.shopId === null ? IsNull() : this.shopId };
+  }
+
+  private scopedQuery() {
+    const query = this.repository.createQueryBuilder('user');
+
+    return this.shopId === null
+      ? query.where('user.shopId IS NULL')
+      : query.where('user.shopId = :shopId', { shopId: this.shopId });
   }
 }

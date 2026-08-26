@@ -6,6 +6,7 @@ import { pinoHttp } from 'pino-http';
 import type { Cradle } from './container';
 import { NotFoundError } from './errors/app-error';
 import { errorHandler } from './middleware/error-handler';
+import { requireShop, resolveShop } from './middleware/resolve-shop';
 import { scopePerRequest } from './middleware/scope';
 import { appointmentsRoutes } from './routes/appointments.routes';
 import { authRoutes } from './routes/auth.routes';
@@ -15,7 +16,9 @@ import { clientsRoutes } from './routes/clients.routes';
 import { commissionsRoutes } from './routes/commissions.routes';
 import { expensesRoutes } from './routes/expenses.routes';
 import { healthRoutes } from './routes/health.routes';
+import { internalRoutes } from './routes/internal.routes';
 import { paymentsRoutes } from './routes/payments.routes';
+import { platformRoutes } from './routes/platform.routes';
 import { productSalesRoutes } from './routes/product-sales.routes';
 import { productsRoutes } from './routes/products.routes';
 import { reportsRoutes } from './routes/reports.routes';
@@ -34,7 +37,15 @@ export function createApp(container: AwilixContainer<Cradle>): Express {
   const config = container.resolve('config');
 
   app.use(healthRoutes());
+  app.use('/v1', internalRoutes());
+
+  app.use(resolveShop(config, container.resolve('shopsRepository')));
+
   app.use('/v1', authRoutes());
+
+  app.use('/v1/platform', platformRoutes(config));
+
+  app.use('/v1', requireShop());
   app.use('/v1', usersRoutes(config));
   app.use('/v1', barbersRoutes(config));
   app.use('/v1', servicesRoutes(config));

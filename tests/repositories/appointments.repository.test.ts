@@ -1,12 +1,11 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import type { Barber } from '../../src/entities/barber.entity';
 import type { Service } from '../../src/entities/service.entity';
 import type { User } from '../../src/entities/user.entity';
 import { ConflictError } from '../../src/errors/app-error';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeBarber, makeService, makeUser } from '../support/factories';
+import { makeBarber, makeService, makeUser, withTestShop } from '../support/factories';
 import { AppointmentsRepository } from '../../src/repositories/appointments.repository';
 
 const AT_10_00 = new Date('2030-03-01T10:00:00.000Z');
@@ -22,7 +21,7 @@ describe('AppointmentsRepository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new AppointmentsRepository({ dataSource } as Cradle);
+    repository = new AppointmentsRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

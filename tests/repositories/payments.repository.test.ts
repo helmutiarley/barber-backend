@@ -1,11 +1,16 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import { withTransaction } from '../../src/lib/transaction';
 import { CashMovementsRepository } from '../../src/repositories/cash-movements.repository';
 import { PaymentsRepository } from '../../src/repositories/payments.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeAppointment, makePayment, makeSession, makeUser } from '../support/factories';
+import {
+  makeAppointment,
+  makePayment,
+  makeSession,
+  makeUser,
+  withTestShop,
+} from '../support/factories';
 
 const PAGE = { limit: 50, offset: 0 };
 
@@ -16,8 +21,8 @@ describe('PaymentsRepository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new PaymentsRepository({ dataSource } as Cradle);
-    movements = new CashMovementsRepository({ dataSource } as Cradle);
+    repository = new PaymentsRepository(withTestShop(dataSource));
+    movements = new CashMovementsRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

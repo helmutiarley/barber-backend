@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import type { DataSource } from 'typeorm';
 import { loadConfig } from '../../src/config';
 import { createDataSource } from '../../src/lib/data-source';
+import { ensureTestShop } from './factories';
 
 let connection: Promise<DataSource> | undefined;
 
@@ -49,4 +50,6 @@ export async function truncateAll(dataSource: DataSource): Promise<void> {
   const tables = dataSource.entityMetadatas.map((metadata) => `"${metadata.tableName}"`).join(', ');
 
   await dataSource.query(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE`);
+
+  await ensureTestShop(dataSource);
 }

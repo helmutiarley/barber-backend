@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import type { Cradle } from '../container';
 import { ProductSale } from '../entities/product-sale.entity';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewProductSale {
   productId: string;
@@ -48,24 +49,28 @@ export interface Page {
 
 export class ProductSalesRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewProductSale[], manager?: EntityManager): Promise<ProductSale[]> {
     const repository = this.repo(manager);
 
-    return repository.save(repository.create(data));
+    return repository.save(
+      repository.create(data.map((row) => ({ ...row, shopId: this.shopId }))),
+    );
   }
 
   async findById(id: string, manager?: EntityManager): Promise<ProductSale | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findByPayment(paymentId: string, manager?: EntityManager): Promise<ProductSale[]> {
     return this.repo(manager).find({
-      where: { paymentId },
+      where: { paymentId, shopId: this.shopId },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
   }
@@ -73,10 +78,10 @@ export class ProductSalesRepository {
   async void(ids: string[], data: SaleVoid, manager?: EntityManager): Promise<ProductSale[]> {
     if (ids.length === 0) return [];
 
-    await this.repo(manager).update({ id: In(ids), voidedAt: IsNull() }, data);
+    await this.repo(manager).update({ id: In(ids), shopId: this.shopId, voidedAt: IsNull() }, data);
 
     return this.repo(manager).find({
-      where: { id: In(ids) },
+      where: { id: In(ids), shopId: this.shopId },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
   }
@@ -86,6 +91,7 @@ export class ProductSalesRepository {
 
     return this.repo().findAndCount({
       where: {
+        shopId: this.shopId,
         ...(filters.productId ? { productId: filters.productId } : {}),
         ...(filters.barberId ? { soldByBarberId: filters.barberId } : {}),
         ...(filters.clientId ? { clientId: filters.clientId } : {}),

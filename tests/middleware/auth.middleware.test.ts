@@ -19,7 +19,7 @@ function run(middleware: ReturnType<typeof authenticate>, req: Partial<Request>)
 
 describe('authenticate', () => {
   it('attaches the user from a valid Bearer token', () => {
-    const token = signAccessToken(config, { sub: 'user-1', role: 'MANAGER' });
+    const token = signAccessToken(config, { sub: 'user-1', role: 'MANAGER', shopId: null });
 
     const { req, next } = run(authenticate(config), {
       headers: { authorization: `Bearer ${token}` },
@@ -45,6 +45,7 @@ describe('authenticate', () => {
       {
         sub: 'user-1',
         role: 'CLIENT',
+        shopId: null,
       },
     );
 

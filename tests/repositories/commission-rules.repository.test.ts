@@ -1,11 +1,16 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import type { Barber } from '../../src/entities/barber.entity';
 import type { Service } from '../../src/entities/service.entity';
 import { CommissionRulesRepository } from '../../src/repositories/commission-rules.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeBarber, makeCommissionRule, makeService } from '../support/factories';
+import {
+  TEST_SHOP_ID,
+  makeBarber,
+  makeCommissionRule,
+  makeService,
+  withTestShop,
+} from '../support/factories';
 
 describe('commission rules repository', () => {
   let dataSource: DataSource;
@@ -15,7 +20,7 @@ describe('commission rules repository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new CommissionRulesRepository({ dataSource } as Cradle);
+    repository = new CommissionRulesRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {
@@ -206,7 +211,8 @@ describe('commission rules repository', () => {
   it('refuses a rate above one at the database level', async () => {
     await expect(
       dataSource.query(
-        `INSERT INTO commission_rules (rate, base, applies_to) VALUES (1.5, 'gross', 'services')`,
+        `INSERT INTO commission_rules (shop_id, rate, base, applies_to) VALUES ($1, 1.5, 'gross', 'services')`,
+        [TEST_SHOP_ID],
       ),
     ).rejects.toThrow(/chk_commission_rules_rate_range/);
   });

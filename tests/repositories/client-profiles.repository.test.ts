@@ -1,10 +1,14 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import type { User } from '../../src/entities/user.entity';
 import { ClientProfilesRepository } from '../../src/repositories/client-profiles.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeAppointment, makeClientProfile, makeUser } from '../support/factories';
+import {
+  makeAppointment,
+  makeClientProfile,
+  makeUser,
+  withTestShop,
+} from '../support/factories';
 
 const PAGE = { limit: 50, offset: 0 };
 const LAST_MONTH = new Date('2030-02-01T13:00:00.000Z');
@@ -17,7 +21,7 @@ describe('ClientProfilesRepository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new ClientProfilesRepository({ dataSource } as Cradle);
+    repository = new ClientProfilesRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

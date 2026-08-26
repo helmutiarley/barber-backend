@@ -20,6 +20,10 @@ export class StockAdjustment {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_stock_adjustments_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   productId!: string;
 

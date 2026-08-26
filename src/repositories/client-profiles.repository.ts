@@ -4,6 +4,7 @@ import { Appointment } from '../entities/appointment.entity';
 import { ClientProfile } from '../entities/client-profile.entity';
 import { User } from '../entities/user.entity';
 import { decimalStringToCents } from '../lib/money';
+import { requireShopId } from '../lib/shop-context';
 
 export interface ProfileChanges {
   birthday?: string | null;
@@ -55,15 +56,17 @@ export class ClientProfilesRepository {
   private readonly profiles: Repository<ClientProfile>;
   private readonly users: Repository<User>;
   private readonly appointments: Repository<Appointment>;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.profiles = dataSource.getRepository(ClientProfile);
     this.users = dataSource.getRepository(User);
     this.appointments = dataSource.getRepository(Appointment);
+    this.shopId = requireShopId(currentShop);
   }
 
   async findByUserId(userId: string): Promise<ClientProfile | null> {
-    return this.profiles.findOneBy({ userId });
+    return this.profiles.findOneBy({ userId, shopId: this.shopId });
   }
 
   async upsert(userId: string, changes: ProfileChanges): Promise<ClientProfile> {
@@ -78,6 +81,7 @@ export class ClientProfilesRepository {
 
         ...omitUndefined(changes),
         userId,
+        shopId: this.shopId,
       }),
     );
   }
@@ -113,6 +117,7 @@ export class ClientProfilesRepository {
       .addSelect(`round(avg(a.price) FILTER (WHERE a.status = 'completed'), 2)`, 'averageTicket')
       .addSelect(`count(*) FILTER (WHERE a.status = 'no_show')`, 'noShows')
       .where('a.client_id = :clientId', { clientId })
+      .andWhere('a.shop_id = :shopId', { shopId: this.shopId })
       .getRawOne<RawStats>();
 
     return {
@@ -128,7 +133,8 @@ export class ClientProfilesRepository {
     const query = this.users
       .createQueryBuilder('u')
       .leftJoin(ClientProfile, 'p', 'p.user_id = u.id')
-      .where('u.role = :role', { role: 'CLIENT' });
+      .where('u.role = :role', { role: 'CLIENT' })
+      .andWhere('u.shop_id = :shopId', { shopId: this.shopId });
 
     if (filters.search) {
       query.andWhere('(u.name ILIKE :q OR u.email ILIKE :q OR u.phone ILIKE :q)', {
@@ -144,9 +150,10 @@ export class ClientProfilesRepository {
       query.andWhere(
         `NOT EXISTS (
            SELECT 1 FROM appointments a
-           WHERE a.client_id = u.id AND a.status = 'completed' AND a.starts_at >= :since
+           WHERE a.client_id = u.id AND a.shop_id = :shopId
+             AND a.status = 'completed' AND a.starts_at >= :since
          )`,
-        { since: filters.inactiveSince },
+        { since: filters.inactiveSince, shopId: this.shopId },
       );
     }
 

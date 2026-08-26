@@ -1,6 +1,5 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import { shopRangeBounds, toInstant } from '../../src/lib/shop-time';
 import { ReportsRepository } from '../../src/repositories/reports.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
@@ -14,6 +13,7 @@ import {
   makeProductSale,
   makeService,
   makeUser,
+  withTestShop,
 } from '../support/factories';
 
 const ZONE = 'America/Sao_Paulo';
@@ -30,7 +30,7 @@ describe('reports repository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new ReportsRepository({ dataSource } as Cradle);
+    repository = new ReportsRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

@@ -3,6 +3,7 @@ import type { Cradle } from '../container';
 import { CashMovement } from '../entities/cash-movement.entity';
 import type { CashMovementSource, CashMovementType } from '../entities/enums';
 import { decimalStringToCents } from '../lib/money';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewMovement {
   sessionId: string;
@@ -30,9 +31,11 @@ interface RawTotals {
 
 export class CashMovementsRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewMovement, manager?: EntityManager): Promise<CashMovement> {
@@ -45,13 +48,17 @@ export class CashMovementsRepository {
         advanceId: null,
         periodId: null,
         description: null,
+        shopId: this.shopId,
         ...data,
       }),
     );
   }
 
   async findBySession(sessionId: string): Promise<CashMovement[]> {
-    return this.repo().find({ where: { sessionId }, order: { createdAt: 'ASC', id: 'ASC' } });
+    return this.repo().find({
+      where: { sessionId, shopId: this.shopId },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
   }
 
   async sumBySession(sessionId: string, manager?: EntityManager): Promise<MovementTotals> {
@@ -60,6 +67,7 @@ export class CashMovementsRepository {
       .select(`SUM(m.amount) FILTER (WHERE m.type = 'in')`, 'in')
       .addSelect(`SUM(m.amount) FILTER (WHERE m.type = 'out')`, 'out')
       .where('m.session_id = :sessionId', { sessionId })
+      .andWhere('m.shop_id = :shopId', { shopId: this.shopId })
       .getRawOne<RawTotals>();
 
     return {

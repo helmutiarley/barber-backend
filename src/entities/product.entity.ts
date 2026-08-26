@@ -11,7 +11,7 @@ import { moneyTransformer } from '../lib/money';
 
 @Entity('products')
 
-@Index('uq_products_name_active', ['name'], { unique: true, where: 'active' })
+@Index('uq_products_name_active', ['shopId', 'name'], { unique: true, where: 'active' })
 
 @Check('chk_products_stock_non_negative', '"stock_quantity" >= 0')
 @Check('chk_products_low_stock_threshold_non_negative', '"low_stock_threshold" >= 0')
@@ -19,6 +19,10 @@ import { moneyTransformer } from '../lib/money';
 export class Product {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Index('idx_products_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
 
   @Column({ type: 'varchar' })
   name!: string;

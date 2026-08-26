@@ -6,28 +6,26 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { moneyTransformer } from '../lib/money';
 
-@Entity('services')
-export class Service {
+@Entity('shops')
+export class Shop {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
-
-  @Index('idx_services_shop_id')
-  @Column({ type: 'uuid' })
-  shopId!: string;
 
   @Column({ type: 'varchar' })
   name!: string;
 
-  @Column({ type: 'text', nullable: true })
-  description!: string | null;
+  @Index('uq_shops_slug', { unique: true })
+  @Column({ type: 'varchar' })
+  slug!: string;
 
-  @Column({ type: 'numeric', precision: 10, scale: 2, transformer: moneyTransformer })
-  price!: number;
+  @Index('uq_shops_domain', { unique: true })
+  @Column({ type: 'varchar' })
+  domain!: string;
 
-  @Column({ type: 'smallint' })
-  durationMinutes!: number;
+  @Index('uq_shops_custom_domain', { unique: true })
+  @Column({ type: 'varchar', nullable: true })
+  customDomain!: string | null;
 
   @Column({ type: 'boolean', default: true })
   active!: boolean;

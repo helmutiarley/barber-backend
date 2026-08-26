@@ -13,10 +13,17 @@ import { CASH_SESSION_STATUSES, type CashSessionStatus } from './enums';
 import { User } from './user.entity';
 
 @Entity('cash_register_sessions')
-@Index('uq_cash_sessions_one_open', ['status'], { unique: true, where: `status = 'open'` })
+@Index('uq_cash_sessions_one_open', ['shopId', 'status'], {
+  unique: true,
+  where: `status = 'open'`,
+})
 export class CashRegisterSession {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Index('idx_cash_sessions_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
 
   @Column({
     type: 'enum',

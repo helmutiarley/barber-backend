@@ -20,6 +20,10 @@ export class CommissionAdvance {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_commission_advances_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   barberId!: string;
 

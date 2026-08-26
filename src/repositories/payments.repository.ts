@@ -11,6 +11,7 @@ import type { Cradle } from '../container';
 import type { PaymentMethod } from '../entities/enums';
 import { Payment } from '../entities/payment.entity';
 import { decimalStringToCents } from '../lib/money';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewPayment {
   appointmentId: string | null;
@@ -44,23 +45,28 @@ export interface Page {
 
 export class PaymentsRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(rows: NewPayment[], manager?: EntityManager): Promise<Payment[]> {
     const repository = this.repo(manager);
 
-    return repository.save(rows.map((row) => repository.create(row)));
+    return repository.save(rows.map((row) => repository.create({ ...row, shopId: this.shopId })));
   }
 
   async findById(id: string, manager?: EntityManager): Promise<Payment | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findByAppointment(appointmentId: string): Promise<Payment[]> {
-    return this.repo().find({ where: { appointmentId }, order: { paidAt: 'ASC', id: 'ASC' } });
+    return this.repo().find({
+      where: { appointmentId, shopId: this.shopId },
+      order: { paidAt: 'ASC', id: 'ASC' },
+    });
   }
 
   async sumPaidForAppointment(appointmentId: string, manager?: EntityManager): Promise<number> {
@@ -68,6 +74,7 @@ export class PaymentsRepository {
       .createQueryBuilder('p')
       .select('SUM(p.amount)', 'total')
       .where('p.appointment_id = :appointmentId', { appointmentId })
+      .andWhere('p.shop_id = :shopId', { shopId: this.shopId })
       .andWhere('p.voided_at IS NULL')
       .getRawOne<{ total: string | null }>();
 
@@ -82,6 +89,7 @@ export class PaymentsRepository {
       .createQueryBuilder('p')
       .select('SUM(p.net_amount)', 'total')
       .where('p.appointment_id = :appointmentId', { appointmentId })
+      .andWhere('p.shop_id = :shopId', { shopId: this.shopId })
       .andWhere('p.voided_at IS NULL')
       .getRawOne<{ total: string | null }>();
 
@@ -93,6 +101,7 @@ export class PaymentsRepository {
 
     return this.repo().findAndCount({
       where: {
+        shopId: this.shopId,
         ...(filters.method ? { method: filters.method } : {}),
         ...(paidAt ? { paidAt } : {}),
         ...(filters.sessionId ? { cashRegisterSessionId: filters.sessionId } : {}),
@@ -104,7 +113,7 @@ export class PaymentsRepository {
   }
 
   async void(id: string, data: VoidData, manager?: EntityManager): Promise<Payment | null> {
-    await this.repo(manager).update({ id, voidedAt: IsNull() }, data);
+    await this.repo(manager).update({ id, shopId: this.shopId, voidedAt: IsNull() }, data);
 
     return this.findById(id, manager);
   }

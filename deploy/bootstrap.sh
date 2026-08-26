@@ -36,7 +36,7 @@ if [[ ! -f "$ROOT/prod/.env" ]]; then
 fi
 
 if [[ ! -f "$ROOT/proxy/.env" ]]; then
-  grep '^CADDY_EMAIL=' "$ROOT/stage/.env" >"$ROOT/proxy/.env" || echo 'CADDY_EMAIL=you@helmutiarley.cloud' >"$ROOT/proxy/.env"
+  grep '^CADDY_EMAIL=' "$ROOT/stage/.env" >"$ROOT/proxy/.env" || echo 'CADDY_EMAIL=you@barbearia360.app' >"$ROOT/proxy/.env"
 fi
 
 chown -R "$DEPLOY_USER:$DEPLOY_USER" "$ROOT"

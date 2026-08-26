@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ENV_NAME="${1:?env is required (stage|prod)}"
-SERVICE="${2:?service is required (api|web)}"
+SERVICE="${2:?service is required (api|web|crm)}"
 IMAGE="${3:?image is required}"
 
 ROOT="/opt/barber/${ENV_NAME}"
@@ -16,8 +16,10 @@ fi
 KEY="API_IMAGE"
 if [[ "$SERVICE" == "web" ]]; then
   KEY="WEB_IMAGE"
+elif [[ "$SERVICE" == "crm" ]]; then
+  KEY="CRM_IMAGE"
 elif [[ "$SERVICE" != "api" ]]; then
-  echo "service must be api or web"
+  echo "service must be api, web or crm"
   exit 1
 fi
 
@@ -34,6 +36,6 @@ if [[ "$SERVICE" == "api" ]]; then
   docker compose pull postgres api
   docker compose up -d postgres api
 else
-  docker compose pull web
-  docker compose up -d web
+  docker compose pull "$SERVICE"
+  docker compose up -d "$SERVICE"
 fi

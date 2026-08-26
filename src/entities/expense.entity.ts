@@ -27,6 +27,10 @@ export class Expense {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_expenses_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'varchar' })
   description!: string;
 

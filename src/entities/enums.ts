@@ -1,4 +1,4 @@
-export const USER_ROLES = ['ADMIN', 'MANAGER', 'BARBER', 'CLIENT'] as const;
+export const USER_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'BARBER', 'CLIENT'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const APPOINTMENT_STATUSES = [

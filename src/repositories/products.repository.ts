@@ -1,6 +1,7 @@
 import type { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import type { Cradle } from '../container';
 import { Product } from '../entities/product.entity';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewProduct {
   name: string;
@@ -35,23 +36,27 @@ export interface Page {
 
 export class ProductsRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewProduct, manager?: EntityManager): Promise<Product> {
     const repository = this.repo(manager);
 
-    return repository.save(repository.create({ description: null, cost: null, ...data }));
+    return repository.save(
+      repository.create({ description: null, cost: null, shopId: this.shopId, ...data }),
+    );
   }
 
   async findById(id: string, manager?: EntityManager): Promise<Product | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findActiveByName(name: string, manager?: EntityManager): Promise<Product | null> {
-    return this.repo(manager).findOneBy({ name, active: true });
+    return this.repo(manager).findOneBy({ name, active: true, shopId: this.shopId });
   }
 
   async update(
@@ -61,7 +66,7 @@ export class ProductsRepository {
   ): Promise<Product | null> {
 
     if (Object.keys(changes).length > 0) {
-      await this.repo(manager).update({ id }, changes);
+      await this.repo(manager).update({ id, shopId: this.shopId }, changes);
     }
 
     return this.findById(id, manager);
@@ -73,6 +78,7 @@ export class ProductsRepository {
       .update(Product)
       .set({ stockQuantity: () => '"stock_quantity" + :delta' })
       .where('id = :id', { id })
+      .andWhere('shop_id = :shopId', { shopId: this.shopId })
       .andWhere('"stock_quantity" + :delta >= 0')
       .setParameter('delta', delta)
       .execute();
@@ -90,7 +96,9 @@ export class ProductsRepository {
   }
 
   private query(filters: ProductFilters): SelectQueryBuilder<Product> {
-    const query = this.repo().createQueryBuilder('p');
+    const query = this.repo()
+      .createQueryBuilder('p')
+      .where('p.shop_id = :shopId', { shopId: this.shopId });
 
     if (filters.active !== undefined)
       query.andWhere('p.active = :active', { active: filters.active });

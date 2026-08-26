@@ -9,6 +9,7 @@ import { Commissions1785815989527 } from './1785815989527-Commissions';
 import { CommissionPeriods1785881283467 } from './1785881283467-CommissionPeriods';
 import { Products1785884242732 } from './1785884242732-Products';
 import { ProductSales1785886385723 } from './1785886385723-ProductSales';
+import { MultiTenantShops1787620000000 } from './1787620000000-MultiTenantShops';
 
 export const migrations = [
   InitialSchema1785084994714,
@@ -22,4 +23,5 @@ export const migrations = [
   CommissionPeriods1785881283467,
   Products1785884242732,
   ProductSales1785886385723,
+  MultiTenantShops1787620000000,
 ];

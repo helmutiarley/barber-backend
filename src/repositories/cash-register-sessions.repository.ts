@@ -9,6 +9,7 @@ import {
 import type { Cradle } from '../container';
 import { CashRegisterSession } from '../entities/cash-register-session.entity';
 import { ConflictError } from '../errors/app-error';
+import { requireShopId } from '../lib/shop-context';
 
 const UNIQUE_VIOLATION = '23505';
 const ONE_OPEN_INDEX = 'uq_cash_sessions_one_open';
@@ -41,24 +42,26 @@ export interface Page {
 
 export class CashRegisterSessionsRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async findOpen(manager?: EntityManager): Promise<CashRegisterSession | null> {
-    return this.repo(manager).findOneBy({ status: 'open' });
+    return this.repo(manager).findOneBy({ status: 'open', shopId: this.shopId });
   }
 
   async findById(id: string, manager?: EntityManager): Promise<CashRegisterSession | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findMany(filters: SessionFilters, page: Page): Promise<[CashRegisterSession[], number]> {
     const openedAt = boundsFor(filters);
 
     return this.repo().findAndCount({
-      where: openedAt ? { openedAt } : {},
+      where: { shopId: this.shopId, ...(openedAt ? { openedAt } : {}) },
       order: { openedAt: 'DESC', id: 'ASC' },
       take: page.limit,
       skip: page.offset,
@@ -69,7 +72,9 @@ export class CashRegisterSessionsRepository {
     const repository = this.repo(manager);
 
     try {
-      return await repository.save(repository.create({ ...data, status: 'open' }));
+      return await repository.save(
+        repository.create({ ...data, shopId: this.shopId, status: 'open' }),
+      );
     } catch (error) {
 
       if (isOneOpenViolation(error)) {
@@ -84,7 +89,7 @@ export class CashRegisterSessionsRepository {
     snapshot: CloseSnapshot,
     manager?: EntityManager,
   ): Promise<CashRegisterSession | null> {
-    await this.repo(manager).update({ id }, { ...snapshot, status: 'closed' });
+    await this.repo(manager).update({ id, shopId: this.shopId }, { ...snapshot, status: 'closed' });
 
     return this.findById(id, manager);
   }

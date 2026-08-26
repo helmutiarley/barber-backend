@@ -1,10 +1,9 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import { ConflictError } from '../../src/errors/app-error';
 import { CommissionPeriodsRepository } from '../../src/repositories/commission-periods.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeBarber, makeCommissionPeriod, makeUser } from '../support/factories';
+import { makeBarber, makeCommissionPeriod, makeUser, withTestShop } from '../support/factories';
 
 const PAGE = { limit: 50, offset: 0 };
 
@@ -14,7 +13,7 @@ describe('commission periods repository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new CommissionPeriodsRepository({ dataSource } as Cradle);
+    repository = new CommissionPeriodsRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

@@ -27,6 +27,10 @@ export class CommissionPeriod {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_commission_periods_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   barberId!: string;
 

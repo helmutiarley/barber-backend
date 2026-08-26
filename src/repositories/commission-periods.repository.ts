@@ -10,6 +10,7 @@ import type { Cradle } from '../container';
 import { CommissionPeriod } from '../entities/commission-period.entity';
 import type { CommissionPeriodStatus, PaymentMethod } from '../entities/enums';
 import { ConflictError } from '../errors/app-error';
+import { requireShopId } from '../lib/shop-context';
 
 const EXCLUSION_VIOLATION = '23P01';
 
@@ -44,16 +45,18 @@ export interface Page {
 
 export class CommissionPeriodsRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewCommissionPeriod, manager?: EntityManager): Promise<CommissionPeriod> {
     const repository = this.repo(manager);
 
     try {
-      return await repository.save(repository.create(data));
+      return await repository.save(repository.create({ ...data, shopId: this.shopId }));
     } catch (error) {
 
       if (isExclusionViolation(error)) {
@@ -66,7 +69,7 @@ export class CommissionPeriodsRepository {
   }
 
   async findById(id: string, manager?: EntityManager): Promise<CommissionPeriod | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findOverlapping(
@@ -78,6 +81,7 @@ export class CommissionPeriodsRepository {
     return this.repo(manager).findOne({
       where: {
         barberId,
+        shopId: this.shopId,
         startsOn: LessThanOrEqual(endsOn),
         endsOn: MoreThanOrEqual(startsOn),
       },
@@ -96,6 +100,7 @@ export class CommissionPeriodsRepository {
     return this.repo(manager).find({
       where: {
         barberId: In(barberIds),
+        shopId: this.shopId,
         startsOn: LessThanOrEqual(endsOn),
         endsOn: MoreThanOrEqual(startsOn),
       },
@@ -109,7 +114,7 @@ export class CommissionPeriodsRepository {
     manager?: EntityManager,
   ): Promise<CommissionPeriod | null> {
     const result = await this.repo(manager).update(
-      { id, status: 'closed' },
+      { id, shopId: this.shopId, status: 'closed' },
       { status: 'paid', paidAt: payment.paidAt, paymentMethod: payment.paymentMethod },
     );
 
@@ -122,6 +127,7 @@ export class CommissionPeriodsRepository {
   ): Promise<[CommissionPeriod[], number]> {
     return this.repo().findAndCount({
       where: {
+        shopId: this.shopId,
         ...(filters.barberId ? { barberId: filters.barberId } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.to ? { startsOn: LessThanOrEqual(filters.to) } : {}),

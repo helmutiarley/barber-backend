@@ -2,6 +2,7 @@ import type { DataSource, EntityManager, Repository } from 'typeorm';
 import type { Cradle } from '../container';
 import type { StockAdjustmentReason } from '../entities/enums';
 import { StockAdjustment } from '../entities/stock-adjustment.entity';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewStockAdjustment {
   productId: string;
@@ -19,15 +20,17 @@ export interface Page {
 
 export class StockAdjustmentsRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewStockAdjustment, manager?: EntityManager): Promise<StockAdjustment> {
     const repository = this.repo(manager);
 
-    return repository.save(repository.create({ notes: null, ...data }));
+    return repository.save(repository.create({ notes: null, shopId: this.shopId, ...data }));
   }
 
   async findByProduct(
@@ -36,7 +39,7 @@ export class StockAdjustmentsRepository {
     manager?: EntityManager,
   ): Promise<[StockAdjustment[], number]> {
     return this.repo(manager).findAndCount({
-      where: { productId },
+      where: { productId, shopId: this.shopId },
       order: { createdAt: 'DESC', id: 'ASC' },
       take: page.limit,
       skip: page.offset,

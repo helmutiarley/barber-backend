@@ -15,10 +15,12 @@ import { ProductSale } from './product-sale.entity';
 import { Product } from './product.entity';
 import { RefreshToken } from './refresh-token.entity';
 import { Service } from './service.entity';
+import { Shop } from './shop.entity';
 import { StockAdjustment } from './stock-adjustment.entity';
 import { User } from './user.entity';
 
 export const entities = [
+  Shop,
   User,
   Barber,
   BarberSchedule,
@@ -58,6 +60,7 @@ export {
   ProductSale,
   RefreshToken,
   Service,
+  Shop,
   StockAdjustment,
   User,
 };

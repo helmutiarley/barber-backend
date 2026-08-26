@@ -28,6 +28,10 @@ export class BarberSchedule {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_barber_schedules_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   barberId!: string;
 

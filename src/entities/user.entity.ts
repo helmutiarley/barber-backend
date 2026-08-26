@@ -9,14 +9,19 @@ import {
 import { USER_ROLES, type UserRole } from './enums';
 
 @Entity('users')
+@Index('uq_users_shop_email', ['shopId', 'email'], { unique: true })
+@Index('uq_users_platform_email', ['email'], { unique: true, where: 'shop_id IS NULL' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_users_shop_id')
+  @Column({ type: 'uuid', nullable: true })
+  shopId!: string | null;
+
   @Column({ type: 'varchar' })
   name!: string;
 
-  @Index('uq_users_email', { unique: true })
   @Column({ type: 'varchar' })
   email!: string;
 

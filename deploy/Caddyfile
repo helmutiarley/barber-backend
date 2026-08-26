@@ -1,44 +1,112 @@
 {
 	email {$CADDY_EMAIL}
+
+	# Multi-tenant domains: before issuing a certificate for an unknown host,
+	# ask the environment that owns it whether a shop answers there. The
+	# router on 127.0.0.1:9444 below picks staging or production.
+	on_demand_tls {
+		ask http://127.0.0.1:9444/check
+	}
 }
 
-# Staging frontend. Browser calls /v1 on this host; Caddy forwards to the API
-# container on the Docker network (not via the public API hostname).
-barber-stage.helmutiarley.cloud {
-	handle /v1* {
-		reverse_proxy barber-stage-api:3000
-	}
+# Internal router for the on-demand TLS "ask". Staging owns *.barbearia360.dev;
+# production owns *.barbearia360.app and customer custom domains.
+http://127.0.0.1:9444 {
+	@stage expression `{http.request.uri.query.domain}.endsWith(".barbearia360.dev")`
 
-	handle /health {
+	handle @stage {
+		rewrite * /v1/internal/tls-check?{query}
 		reverse_proxy barber-stage-api:3000
 	}
 
 	handle {
-		reverse_proxy barber-stage-web:80
+		rewrite * /v1/internal/tls-check?{query}
+		reverse_proxy barber-prod-api:3000
 	}
 }
 
-# Staging API (public). Same container as above.
-barber-api-stage.helmutiarley.cloud {
+# ─── Staging: barbearia360.dev ──────────────────────────────────────────────
+
+# Apex is reserved for a future landing page; no shop answers here.
+barbearia360.dev {
+	respond "Em breve." 200
+}
+
+# Staging API (public).
+api.barbearia360.dev {
 	reverse_proxy barber-stage-api:3000
 }
 
-# Production frontend. Same local /v1 proxy as staging.
-barber.helmutiarley.cloud {
+# Staging CRM. Platform routes go to the staging API, the SPA to its own container.
+crm.barbearia360.dev {
+	handle /v1* {
+		reverse_proxy barber-stage-api:3000
+	}
+
+	handle {
+		reverse_proxy barber-stage-crm:80
+	}
+}
+
+# ─── Production: barbearia360.app ───────────────────────────────────────────
+
+# Apex is reserved for a future landing page; no shop answers here.
+barbearia360.app {
+	respond "Em breve." 200
+}
+
+# Production API (public).
+api.barbearia360.app {
+	reverse_proxy barber-prod-api:3000
+}
+
+# Production CRM.
+crm.barbearia360.app {
 	handle /v1* {
 		reverse_proxy barber-prod-api:3000
 	}
 
-	handle /health {
-		reverse_proxy barber-prod-api:3000
-	}
-
 	handle {
-		reverse_proxy barber-prod-web:80
+		reverse_proxy barber-prod-crm:80
 	}
 }
 
-# Production API (public). Same container as above.
-barber-api.helmutiarley.cloud {
-	reverse_proxy barber-prod-api:3000
+# ─── Shop subdomains and customer custom domains ────────────────────────────
+
+# Certificates are issued on demand, gated by the ask router above; the API
+# resolves the tenant from the Host header. *.barbearia360.dev is staging,
+# everything else (*.barbearia360.app + customer domains) is production.
+https:// {
+	tls {
+		on_demand
+	}
+
+	@stage host *.barbearia360.dev
+	handle @stage {
+		handle /v1* {
+			reverse_proxy barber-stage-api:3000
+		}
+
+		handle /health {
+			reverse_proxy barber-stage-api:3000
+		}
+
+		handle {
+			reverse_proxy barber-stage-web:80
+		}
+	}
+
+	handle {
+		handle /v1* {
+			reverse_proxy barber-prod-api:3000
+		}
+
+		handle /health {
+			reverse_proxy barber-prod-api:3000
+		}
+
+		handle {
+			reverse_proxy barber-prod-web:80
+		}
+	}
 }

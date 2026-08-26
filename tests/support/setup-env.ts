@@ -6,5 +6,6 @@ process.env.LOG_LEVEL = 'silent';
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://barber:barber@localhost:5432/barber_test';
 process.env.JWT_SECRET = 'test-jwt-secret-that-is-at-least-32-characters-long';
+process.env.SHOP_CACHE_TTL_MS = '0';
 
 afterAll(closeTestDataSource);

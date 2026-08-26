@@ -15,6 +15,10 @@ export class ClientProfile {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_client_profiles_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Index('uq_client_profiles_user_id', { unique: true })
   @Column({ type: 'uuid' })
   userId!: string;

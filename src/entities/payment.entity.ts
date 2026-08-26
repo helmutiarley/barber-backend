@@ -26,6 +26,10 @@ export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_payments_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid', nullable: true })
   appointmentId!: string | null;
 

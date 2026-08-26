@@ -13,6 +13,7 @@ import type { Cradle } from '../container';
 import { CommissionEntry } from '../entities/commission-entry.entity';
 import type { CommissionBase } from '../entities/enums';
 import { ConflictError } from '../errors/app-error';
+import { requireShopId } from '../lib/shop-context';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -48,16 +49,18 @@ export interface Page {
 
 export class CommissionEntriesRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewCommissionEntry, manager?: EntityManager): Promise<CommissionEntry> {
     const repository = this.repo(manager);
 
     try {
-      return await repository.save(repository.create(data));
+      return await repository.save(repository.create({ ...data, shopId: this.shopId }));
     } catch (error) {
 
       if (isUniqueViolation(error)) {
@@ -72,14 +75,14 @@ export class CommissionEntriesRepository {
   }
 
   async findById(id: string, manager?: EntityManager): Promise<CommissionEntry | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findByAppointment(
     appointmentId: string,
     manager?: EntityManager,
   ): Promise<CommissionEntry | null> {
-    return this.repo(manager).findOneBy({ appointmentId });
+    return this.repo(manager).findOneBy({ appointmentId, shopId: this.shopId });
   }
 
   async findByProductSales(
@@ -89,7 +92,7 @@ export class CommissionEntriesRepository {
     if (productSaleIds.length === 0) return [];
 
     return this.repo(manager).find({
-      where: { productSaleId: In(productSaleIds) },
+      where: { productSaleId: In(productSaleIds), shopId: this.shopId },
       order: { createdAt: 'ASC', id: 'ASC' },
     });
   }
@@ -99,7 +102,7 @@ export class CommissionEntriesRepository {
     amounts: EntryAmounts,
     manager?: EntityManager,
   ): Promise<CommissionEntry | null> {
-    await this.repo(manager).update({ id }, amounts);
+    await this.repo(manager).update({ id, shopId: this.shopId }, amounts);
 
     return this.findById(id, manager);
   }
@@ -108,7 +111,7 @@ export class CommissionEntriesRepository {
     if (ids.length === 0) return 0;
 
     const result = await this.repo(manager).update(
-      { id: In(ids), periodId: IsNull() },
+      { id: In(ids), shopId: this.shopId, periodId: IsNull() },
       { baseAmount: 0, amount: 0 },
     );
 
@@ -124,6 +127,7 @@ export class CommissionEntriesRepository {
     return this.repo(manager).find({
       where: {
         barberId,
+        shopId: this.shopId,
         periodId: IsNull(),
         createdAt: And(MoreThanOrEqual(start), LessThan(end)),
       },
@@ -132,14 +136,17 @@ export class CommissionEntriesRepository {
   }
 
   async findByPeriod(periodId: string, manager?: EntityManager): Promise<CommissionEntry[]> {
-    return this.repo(manager).find({ where: { periodId }, order: { createdAt: 'ASC' } });
+    return this.repo(manager).find({
+      where: { periodId, shopId: this.shopId },
+      order: { createdAt: 'ASC' },
+    });
   }
 
   async assignPeriod(ids: string[], periodId: string, manager?: EntityManager): Promise<number> {
     if (ids.length === 0) return 0;
 
     const result = await this.repo(manager).update(
-      { id: In(ids), periodId: IsNull() },
+      { id: In(ids), shopId: this.shopId, periodId: IsNull() },
       { periodId },
     );
 
@@ -154,6 +161,7 @@ export class CommissionEntriesRepository {
 
     return this.repo().findAndCount({
       where: {
+        shopId: this.shopId,
         ...(filters.barberId ? { barberId: filters.barberId } : {}),
         ...(filters.periodId ? { periodId: filters.periodId } : {}),
         ...(createdAt ? { createdAt } : {}),

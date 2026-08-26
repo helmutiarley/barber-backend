@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import type { Cradle } from '../container';
 import { CommissionAdvance } from '../entities/commission-advance.entity';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewCommissionAdvance {
   barberId: string;
@@ -36,19 +37,21 @@ export interface Page {
 
 export class CommissionAdvancesRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewCommissionAdvance, manager?: EntityManager): Promise<CommissionAdvance> {
     const repository = this.repo(manager);
 
-    return repository.save(repository.create(data));
+    return repository.save(repository.create({ ...data, shopId: this.shopId }));
   }
 
   async findById(id: string, manager?: EntityManager): Promise<CommissionAdvance | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findUnassignedInRange(
@@ -60,6 +63,7 @@ export class CommissionAdvancesRepository {
     return this.repo(manager).find({
       where: {
         barberId,
+        shopId: this.shopId,
         periodId: IsNull(),
         createdAt: And(MoreThanOrEqual(start), LessThan(end)),
       },
@@ -68,14 +72,17 @@ export class CommissionAdvancesRepository {
   }
 
   async findByPeriod(periodId: string, manager?: EntityManager): Promise<CommissionAdvance[]> {
-    return this.repo(manager).find({ where: { periodId }, order: { createdAt: 'ASC' } });
+    return this.repo(manager).find({
+      where: { periodId, shopId: this.shopId },
+      order: { createdAt: 'ASC' },
+    });
   }
 
   async assignPeriod(ids: string[], periodId: string, manager?: EntityManager): Promise<number> {
     if (ids.length === 0) return 0;
 
     const result = await this.repo(manager).update(
-      { id: In(ids), periodId: IsNull() },
+      { id: In(ids), shopId: this.shopId, periodId: IsNull() },
       { periodId },
     );
 
@@ -90,6 +97,7 @@ export class CommissionAdvancesRepository {
 
     return this.repo().findAndCount({
       where: {
+        shopId: this.shopId,
         ...(filters.barberId ? { barberId: filters.barberId } : {}),
         ...(filters.periodId ? { periodId: filters.periodId } : {}),
         ...(filters.unassigned ? { periodId: IsNull() } : {}),

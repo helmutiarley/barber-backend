@@ -2,6 +2,7 @@ import { IsNull, type DataSource, type EntityManager, type Repository } from 'ty
 import type { Cradle } from '../container';
 import { CommissionRule } from '../entities/commission-rule.entity';
 import type { CommissionAppliesTo, CommissionBase } from '../entities/enums';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewCommissionRule {
   barberId: string | null;
@@ -32,19 +33,21 @@ export interface CommissionRuleFilters {
 
 export class CommissionRulesRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewCommissionRule, manager?: EntityManager): Promise<CommissionRule> {
     const repository = this.repo(manager);
 
-    return repository.save(repository.create(data));
+    return repository.save(repository.create({ ...data, shopId: this.shopId }));
   }
 
   async findById(id: string, manager?: EntityManager): Promise<CommissionRule | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async update(
@@ -53,7 +56,7 @@ export class CommissionRulesRepository {
     manager?: EntityManager,
   ): Promise<CommissionRule | null> {
     if (Object.keys(changes).length > 0) {
-      await this.repo(manager).update({ id }, changes);
+      await this.repo(manager).update({ id, shopId: this.shopId }, changes);
     }
 
     return this.findById(id, manager);
@@ -63,6 +66,7 @@ export class CommissionRulesRepository {
     return this.repo(manager)
       .createQueryBuilder('r')
       .where('r.active = true')
+      .andWhere('r.shop_id = :shopId', { shopId: this.shopId })
       .andWhere('r.applies_to = :appliesTo', { appliesTo: scope.appliesTo })
       .andWhere('(r.barber_id = :barberId OR r.barber_id IS NULL)', { barberId: scope.barberId })
       .andWhere('(r.service_id = :serviceId OR r.service_id IS NULL)', {
@@ -80,6 +84,7 @@ export class CommissionRulesRepository {
     manager?: EntityManager,
   ): Promise<CommissionRule | null> {
     return this.repo(manager).findOneBy({
+      shopId: this.shopId,
       barberId: scope.barberId === null ? IsNull() : scope.barberId,
       serviceId: scope.serviceId === null ? IsNull() : scope.serviceId,
       appliesTo: scope.appliesTo,
@@ -88,7 +93,9 @@ export class CommissionRulesRepository {
   }
 
   async findMany(filters: CommissionRuleFilters): Promise<CommissionRule[]> {
-    const query = this.repo().createQueryBuilder('r');
+    const query = this.repo()
+      .createQueryBuilder('r')
+      .where('r.shop_id = :shopId', { shopId: this.shopId });
 
     if (filters.appliesTo) query.andWhere('r.applies_to = :appliesTo', filters);
     if (filters.active !== undefined) query.andWhere('r.active = :active', filters);

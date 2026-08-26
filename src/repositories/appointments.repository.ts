@@ -13,6 +13,7 @@ import type { Cradle } from '../container';
 import { Appointment } from '../entities/appointment.entity';
 import { ACTIVE_APPOINTMENT_STATUSES, type AppointmentStatus } from '../entities/enums';
 import { ConflictError } from '../errors/app-error';
+import { requireShopId } from '../lib/shop-context';
 
 const EXCLUSION_VIOLATION = '23P01';
 
@@ -45,9 +46,11 @@ export interface Page {
 
 export class AppointmentsRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async findOverlapping(
@@ -73,7 +76,9 @@ export class AppointmentsRepository {
   async create(data: NewAppointment): Promise<Appointment> {
     const repository = this.repo();
 
-    return this.guarded(() => repository.save(repository.create({ notes: null, ...data })));
+    return this.guarded(() =>
+      repository.save(repository.create({ notes: null, shopId: this.shopId, ...data })),
+    );
   }
 
   async update(
@@ -82,20 +87,24 @@ export class AppointmentsRepository {
     manager?: EntityManager,
   ): Promise<Appointment | null> {
     if (Object.keys(changes).length > 0) {
-      await this.guarded(() => this.repo(manager).update({ id }, changes), manager);
+      await this.guarded(
+        () => this.repo(manager).update({ id, shopId: this.shopId }, changes),
+        manager,
+      );
     }
 
     return this.findById(id, manager);
   }
 
   async findById(id: string, manager?: EntityManager): Promise<Appointment | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async findUpcomingActive(barberId: string, from: Date): Promise<Appointment[]> {
     return this.repo().find({
       where: {
         barberId,
+        shopId: this.shopId,
         status: In([...ACTIVE_APPOINTMENT_STATUSES]),
         startsAt: MoreThanOrEqual(from),
       },
@@ -106,6 +115,7 @@ export class AppointmentsRepository {
   async findMany(filters: AppointmentFilters, page: Page): Promise<[Appointment[], number]> {
     return this.repo().findAndCount({
       where: {
+        shopId: this.shopId,
         startsAt: And(MoreThanOrEqual(filters.from), LessThanOrEqual(filters.to)),
         ...(filters.barberId ? { barberId: filters.barberId } : {}),
         ...(filters.clientId ? { clientId: filters.clientId } : {}),
@@ -119,7 +129,7 @@ export class AppointmentsRepository {
 
   async findForClient(clientId: string, page: Page): Promise<[Appointment[], number]> {
     return this.repo().findAndCount({
-      where: { clientId },
+      where: { clientId, shopId: this.shopId },
       order: { startsAt: 'DESC', id: 'ASC' },
       take: page.limit,
       skip: page.offset,
@@ -128,7 +138,7 @@ export class AppointmentsRepository {
 
   async findBetween(barberId: string, from: Date, to: Date): Promise<Appointment[]> {
     return this.repo().find({
-      where: { barberId, startsAt: And(MoreThanOrEqual(from), LessThan(to)) },
+      where: { barberId, shopId: this.shopId, startsAt: And(MoreThanOrEqual(from), LessThan(to)) },
       order: { startsAt: 'ASC' },
     });
   }
@@ -141,7 +151,8 @@ export class AppointmentsRepository {
   ): SelectQueryBuilder<Appointment> {
     const query = this.repo()
       .createQueryBuilder('appointment')
-      .where('appointment.barberId = :barberId', { barberId })
+      .where('appointment.shopId = :shopId', { shopId: this.shopId })
+      .andWhere('appointment.barberId = :barberId', { barberId })
       .andWhere('appointment.status IN (:...statuses)', {
         statuses: [...ACTIVE_APPOINTMENT_STATUSES],
       })

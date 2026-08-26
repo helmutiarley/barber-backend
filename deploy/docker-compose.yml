@@ -38,6 +38,12 @@ services:
       CANCELLATION_WINDOW_HOURS: ${CANCELLATION_WINDOW_HOURS:-24}
       CARD_FEE_RATE_DEBIT: ${CARD_FEE_RATE_DEBIT:-0.015}
       CARD_FEE_RATE_CREDIT: ${CARD_FEE_RATE_CREDIT:-0.035}
+      # barbearia360.app in prod, barbearia360.dev in staging (set per-env).
+      SHOPS_BASE_DOMAIN: ${SHOPS_BASE_DOMAIN:-barbearia360.app}
+      PLATFORM_HOSTS: ${PLATFORM_HOSTS:-crm.barbearia360.app,crm.barbearia360.dev}
+      # Only used when the multi-tenant migration runs against a database that
+      # already has data: domain of the "default" shop that adopts those rows.
+      DEFAULT_SHOP_DOMAIN: ${DEFAULT_SHOP_DOMAIN:-}
     healthcheck:
       test:
         [
@@ -58,6 +64,18 @@ services:
     image: ${WEB_IMAGE}
     container_name: barber-${BARBER_ENV}-web
     restart: unless-stopped
+    networks:
+      - internal
+      - barber-proxy
+
+  # Only started when targeted explicitly (update-image.sh <env> crm), so a
+  # plain `docker compose up -d` keeps working before the CRM ever deployed.
+  crm:
+    image: ${CRM_IMAGE:-crm-image-not-configured}
+    container_name: barber-${BARBER_ENV}-crm
+    restart: unless-stopped
+    profiles:
+      - crm
     networks:
       - internal
       - barber-proxy

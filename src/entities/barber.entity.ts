@@ -15,6 +15,10 @@ export class Barber {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_barbers_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Index('uq_barbers_user_id', { unique: true })
   @Column({ type: 'uuid' })
   userId!: string;

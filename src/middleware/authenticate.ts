@@ -26,6 +26,12 @@ export function authenticate(config: AppConfig): RequestHandler {
 
     try {
       const payload = verifyAccessToken(config, header.slice('Bearer '.length).trim());
+
+      if (payload.shopId !== (req.shop?.id ?? null)) {
+        next(new UnauthorizedError('Invalid or expired token'));
+        return;
+      }
+
       req.user = { id: payload.sub, role: payload.role };
       next();
     } catch (error) {

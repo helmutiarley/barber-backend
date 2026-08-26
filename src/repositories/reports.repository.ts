@@ -10,6 +10,7 @@ import { Product } from '../entities/product.entity';
 import { ProductSale } from '../entities/product-sale.entity';
 import { Service } from '../entities/service.entity';
 import { decimalStringToCents } from '../lib/money';
+import { requireShopId } from '../lib/shop-context';
 import type { RevenueGrouping } from '../schemas/reports.schemas';
 
 export interface Range {
@@ -121,13 +122,16 @@ export class ReportsRepository {
   private readonly productSales: Repository<ProductSale>;
   private readonly products: Repository<Product>;
 
-  constructor({ dataSource }: Cradle) {
+  private readonly shopId: string;
+
+  constructor({ dataSource, currentShop }: Cradle) {
     this.payments = dataSource.getRepository(Payment);
     this.appointments = dataSource.getRepository(Appointment);
     this.expenses = dataSource.getRepository(Expense);
     this.commissionEntries = dataSource.getRepository(CommissionEntry);
     this.productSales = dataSource.getRepository(ProductSale);
     this.products = dataSource.getRepository(Product);
+    this.shopId = requireShopId(currentShop);
   }
 
   async revenue(range: Range, grouping: RevenueGrouping, zone: string): Promise<RevenueBucket[]> {
@@ -254,7 +258,8 @@ export class ReportsRepository {
       .createQueryBuilder('ps')
       .innerJoin(Payment, 'p', 'p.id = ps.payment_id')
       .innerJoin(Product, 'pr', 'pr.id = ps.product_id')
-      .where('ps.voided_at IS NULL')
+      .where('ps.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('ps.voided_at IS NULL')
       .andWhere('p.voided_at IS NULL')
       .andWhere('p.paid_at >= :start AND p.paid_at < :end', range)
       .select('ps.product_id::text', 'productId')
@@ -285,7 +290,8 @@ export class ReportsRepository {
   async lowStock(): Promise<LowStockRow[]> {
     const rows = await this.products
       .createQueryBuilder('pr')
-      .where('pr.active = true')
+      .where('pr.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('pr.active = true')
       .andWhere('pr.stock_quantity <= pr.low_stock_threshold')
       .select('pr.id::text', 'productId')
       .addSelect('pr.name', 'productName')
@@ -311,7 +317,8 @@ export class ReportsRepository {
   async expensesByCategory(range: Range): Promise<ExpenseCategoryRow[]> {
     const rows = await this.expenses
       .createQueryBuilder('e')
-      .where('e.paid_at >= :start AND e.paid_at < :end', range)
+      .where('e.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('e.paid_at >= :start AND e.paid_at < :end', range)
       .select('e.category', 'category')
       .addSelect('SUM(e.amount)', 'amount')
       .groupBy('1')
@@ -327,7 +334,8 @@ export class ReportsRepository {
   async commissionsEarned(range: Range): Promise<number> {
     const raw = await this.commissionEntries
       .createQueryBuilder('ce')
-      .where('ce.created_at >= :start AND ce.created_at < :end', range)
+      .where('ce.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('ce.created_at >= :start AND ce.created_at < :end', range)
       .select('SUM(ce.amount)', 'total')
       .getRawOne<{ total: string | null }>();
 
@@ -337,7 +345,8 @@ export class ReportsRepository {
   async appointmentCounts(range: Range): Promise<Record<string, number>> {
     const rows = await this.appointments
       .createQueryBuilder('a')
-      .where('a.starts_at >= :start AND a.starts_at < :end', range)
+      .where('a.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('a.starts_at >= :start AND a.starts_at < :end', range)
       .select('a.status::text', 'status')
       .addSelect('COUNT(*)', 'count')
       .groupBy('1')
@@ -350,7 +359,8 @@ export class ReportsRepository {
     const rows = await this.appointments
       .createQueryBuilder('a')
       .innerJoin(Barber, 'b', 'b.id = a.barber_id')
-      .where('a.starts_at >= :start AND a.starts_at < :end', range)
+      .where('a.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('a.starts_at >= :start AND a.starts_at < :end', range)
       .select('a.barber_id::text', 'barberId')
       .addSelect('b.display_name', 'barberName')
       .addSelect('a.status::text', 'status')
@@ -371,7 +381,8 @@ export class ReportsRepository {
   async bookedMinutesByBarber(range: Range): Promise<BarberMinutesRow[]> {
     const rows = await this.appointments
       .createQueryBuilder('a')
-      .where('a.starts_at >= :start AND a.starts_at < :end', range)
+      .where('a.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('a.starts_at >= :start AND a.starts_at < :end', range)
       .andWhere(`a.status <> 'cancelled'`)
       .select('a.barber_id::text', 'barberId')
       .addSelect('COALESCE(SUM(a.duration_minutes), 0)', 'minutes')
@@ -391,13 +402,13 @@ export class ReportsRepository {
       WITH first_visit AS (
         SELECT client_id, MIN(starts_at) AS first_at
         FROM appointments
-        WHERE status = 'completed'
+        WHERE status = 'completed' AND shop_id = $3
         GROUP BY client_id
       ),
       period_clients AS (
         SELECT DISTINCT client_id
         FROM appointments
-        WHERE status = 'completed'
+        WHERE status = 'completed' AND shop_id = $3
           AND starts_at >= $1 AND starts_at < $2
       )
       SELECT
@@ -410,7 +421,7 @@ export class ReportsRepository {
       FROM period_clients
       JOIN first_visit ON first_visit.client_id = period_clients.client_id
       `,
-      [range.start, range.end],
+      [range.start, range.end, this.shopId],
     );
 
     return {
@@ -425,6 +436,7 @@ export class ReportsRepository {
       SELECT COUNT(*)::int AS count
       FROM users u
       WHERE u.role = 'CLIENT'
+        AND u.shop_id = $2
         AND NOT EXISTS (
           SELECT 1 FROM appointments a
           WHERE a.client_id = u.id
@@ -432,7 +444,7 @@ export class ReportsRepository {
             AND a.starts_at >= $1
         )
       `,
-      [since],
+      [since, this.shopId],
     );
 
     return Number(raw[0]?.count ?? 0);
@@ -442,7 +454,8 @@ export class ReportsRepository {
     const rows = await this.commissionEntries
       .createQueryBuilder('ce')
       .innerJoin(Barber, 'b', 'b.id = ce.barber_id')
-      .where('ce.created_at >= :start AND ce.created_at < :end', range)
+      .where('ce.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('ce.created_at >= :start AND ce.created_at < :end', range)
       .select('ce.barber_id::text', 'barberId')
       .addSelect('b.display_name', 'barberName')
       .addSelect('SUM(ce.amount)', 'amount')
@@ -463,7 +476,8 @@ export class ReportsRepository {
       .createQueryBuilder('p')
       .leftJoin(Appointment, 'a', 'a.id = p.appointment_id')
       .leftJoin(COLLAPSED_BASKETS, 'ps', 'ps.payment_id = p.id')
-      .where('p.voided_at IS NULL')
+      .where('p.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('p.voided_at IS NULL')
       .andWhere('p.paid_at >= :start AND p.paid_at < :end', range);
   }
 }

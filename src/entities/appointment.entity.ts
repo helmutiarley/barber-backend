@@ -27,6 +27,10 @@ export class Appointment {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_appointments_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   clientId!: string;
 

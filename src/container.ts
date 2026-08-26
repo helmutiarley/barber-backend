@@ -1,6 +1,7 @@
 import { InjectionMode, asClass, asValue, createContainer, type AwilixContainer } from 'awilix';
 import type { DataSource } from 'typeorm';
 import type { AppConfig } from './config';
+import type { Shop } from './entities/shop.entity';
 import { AppointmentsController } from './controllers/appointments.controller';
 import { AuthController } from './controllers/auth.controller';
 import { BarbersController } from './controllers/barbers.controller';
@@ -10,6 +11,7 @@ import { CommissionsController } from './controllers/commissions.controller';
 import { ExpensesController } from './controllers/expenses.controller';
 import { HealthController } from './controllers/health.controller';
 import { PaymentsController } from './controllers/payments.controller';
+import { PlatformController } from './controllers/platform.controller';
 import { ProductSalesController } from './controllers/product-sales.controller';
 import { ProductsController } from './controllers/products.controller';
 import { ReportsController } from './controllers/reports.controller';
@@ -36,6 +38,7 @@ import { ProductsRepository } from './repositories/products.repository';
 import { RefreshTokensRepository } from './repositories/refresh-tokens.repository';
 import { ReportsRepository } from './repositories/reports.repository';
 import { ServicesRepository } from './repositories/services.repository';
+import { ShopsRepository } from './repositories/shops.repository';
 import { StockAdjustmentsRepository } from './repositories/stock-adjustments.repository';
 import { UsersRepository } from './repositories/users.repository';
 import { AppointmentsService } from './services/appointments.service';
@@ -48,6 +51,7 @@ import { CommissionsService } from './services/commissions.service';
 import { ExpensesService } from './services/expenses.service';
 import { HealthService } from './services/health.service';
 import { PaymentsService } from './services/payments.service';
+import { PlatformService } from './services/platform.service';
 import { ProductSalesService } from './services/product-sales.service';
 import { ProductsService } from './services/products.service';
 import { ReportsService } from './services/reports.service';
@@ -60,7 +64,10 @@ export interface Cradle {
   dataSource: DataSource;
   clock: Clock;
 
+  currentShop: Shop | null;
+
   healthRepository: HealthRepository;
+  shopsRepository: ShopsRepository;
   usersRepository: UsersRepository;
   refreshTokensRepository: RefreshTokensRepository;
   barbersRepository: BarbersRepository;
@@ -83,6 +90,7 @@ export interface Cradle {
   reportsRepository: ReportsRepository;
 
   healthService: HealthService;
+  platformService: PlatformService;
   authService: AuthService;
   usersService: UsersService;
   barbersService: BarbersService;
@@ -99,6 +107,7 @@ export interface Cradle {
   reportsService: ReportsService;
 
   healthController: HealthController;
+  platformController: PlatformController;
   authController: AuthController;
   usersController: UsersController;
   barbersController: BarbersController;
@@ -133,58 +142,64 @@ export function buildContainer(deps: ContainerDeps): AwilixContainer<Cradle> {
     dataSource: asValue(deps.dataSource),
     clock: asValue(deps.clock ?? systemClock),
 
+    currentShop: asValue(null),
+
     healthRepository: asClass(HealthRepository).singleton(),
-    usersRepository: asClass(UsersRepository).singleton(),
-    refreshTokensRepository: asClass(RefreshTokensRepository).singleton(),
-    barbersRepository: asClass(BarbersRepository).singleton(),
-    barberSchedulesRepository: asClass(BarberSchedulesRepository).singleton(),
-    barberBlocksRepository: asClass(BarberBlocksRepository).singleton(),
-    servicesRepository: asClass(ServicesRepository).singleton(),
-    appointmentsRepository: asClass(AppointmentsRepository).singleton(),
-    clientProfilesRepository: asClass(ClientProfilesRepository).singleton(),
-    cashRegisterSessionsRepository: asClass(CashRegisterSessionsRepository).singleton(),
-    cashMovementsRepository: asClass(CashMovementsRepository).singleton(),
-    paymentsRepository: asClass(PaymentsRepository).singleton(),
-    expensesRepository: asClass(ExpensesRepository).singleton(),
-    commissionRulesRepository: asClass(CommissionRulesRepository).singleton(),
-    commissionEntriesRepository: asClass(CommissionEntriesRepository).singleton(),
-    commissionPeriodsRepository: asClass(CommissionPeriodsRepository).singleton(),
-    commissionAdvancesRepository: asClass(CommissionAdvancesRepository).singleton(),
-    productsRepository: asClass(ProductsRepository).singleton(),
-    stockAdjustmentsRepository: asClass(StockAdjustmentsRepository).singleton(),
-    productSalesRepository: asClass(ProductSalesRepository).singleton(),
-    reportsRepository: asClass(ReportsRepository).singleton(),
+    shopsRepository: asClass(ShopsRepository).singleton(),
+
+    usersRepository: asClass(UsersRepository).scoped(),
+    refreshTokensRepository: asClass(RefreshTokensRepository).scoped(),
+    barbersRepository: asClass(BarbersRepository).scoped(),
+    barberSchedulesRepository: asClass(BarberSchedulesRepository).scoped(),
+    barberBlocksRepository: asClass(BarberBlocksRepository).scoped(),
+    servicesRepository: asClass(ServicesRepository).scoped(),
+    appointmentsRepository: asClass(AppointmentsRepository).scoped(),
+    clientProfilesRepository: asClass(ClientProfilesRepository).scoped(),
+    cashRegisterSessionsRepository: asClass(CashRegisterSessionsRepository).scoped(),
+    cashMovementsRepository: asClass(CashMovementsRepository).scoped(),
+    paymentsRepository: asClass(PaymentsRepository).scoped(),
+    expensesRepository: asClass(ExpensesRepository).scoped(),
+    commissionRulesRepository: asClass(CommissionRulesRepository).scoped(),
+    commissionEntriesRepository: asClass(CommissionEntriesRepository).scoped(),
+    commissionPeriodsRepository: asClass(CommissionPeriodsRepository).scoped(),
+    commissionAdvancesRepository: asClass(CommissionAdvancesRepository).scoped(),
+    productsRepository: asClass(ProductsRepository).scoped(),
+    stockAdjustmentsRepository: asClass(StockAdjustmentsRepository).scoped(),
+    productSalesRepository: asClass(ProductSalesRepository).scoped(),
+    reportsRepository: asClass(ReportsRepository).scoped(),
 
     healthService: asClass(HealthService).singleton(),
-    authService: asClass(AuthService).singleton(),
-    usersService: asClass(UsersService).singleton(),
-    barbersService: asClass(BarbersService).singleton(),
-    availabilityService: asClass(AvailabilityService).singleton(),
-    servicesService: asClass(ServicesService).singleton(),
-    appointmentsService: asClass(AppointmentsService).singleton(),
-    clientsService: asClass(ClientsService).singleton(),
-    cashRegisterService: asClass(CashRegisterService).singleton(),
-    paymentsService: asClass(PaymentsService).singleton(),
-    expensesService: asClass(ExpensesService).singleton(),
-    commissionsService: asClass(CommissionsService).singleton(),
-    productsService: asClass(ProductsService).singleton(),
-    productSalesService: asClass(ProductSalesService).singleton(),
-    reportsService: asClass(ReportsService).singleton(),
+    platformService: asClass(PlatformService).singleton(),
+    authService: asClass(AuthService).scoped(),
+    usersService: asClass(UsersService).scoped(),
+    barbersService: asClass(BarbersService).scoped(),
+    availabilityService: asClass(AvailabilityService).scoped(),
+    servicesService: asClass(ServicesService).scoped(),
+    appointmentsService: asClass(AppointmentsService).scoped(),
+    clientsService: asClass(ClientsService).scoped(),
+    cashRegisterService: asClass(CashRegisterService).scoped(),
+    paymentsService: asClass(PaymentsService).scoped(),
+    expensesService: asClass(ExpensesService).scoped(),
+    commissionsService: asClass(CommissionsService).scoped(),
+    productsService: asClass(ProductsService).scoped(),
+    productSalesService: asClass(ProductSalesService).scoped(),
+    reportsService: asClass(ReportsService).scoped(),
 
     healthController: asClass(HealthController).singleton(),
-    authController: asClass(AuthController).singleton(),
-    usersController: asClass(UsersController).singleton(),
-    barbersController: asClass(BarbersController).singleton(),
-    servicesController: asClass(ServicesController).singleton(),
-    appointmentsController: asClass(AppointmentsController).singleton(),
-    clientsController: asClass(ClientsController).singleton(),
-    paymentsController: asClass(PaymentsController).singleton(),
-    cashRegisterController: asClass(CashRegisterController).singleton(),
-    expensesController: asClass(ExpensesController).singleton(),
-    commissionsController: asClass(CommissionsController).singleton(),
-    productsController: asClass(ProductsController).singleton(),
-    productSalesController: asClass(ProductSalesController).singleton(),
-    reportsController: asClass(ReportsController).singleton(),
+    platformController: asClass(PlatformController).singleton(),
+    authController: asClass(AuthController).scoped(),
+    usersController: asClass(UsersController).scoped(),
+    barbersController: asClass(BarbersController).scoped(),
+    servicesController: asClass(ServicesController).scoped(),
+    appointmentsController: asClass(AppointmentsController).scoped(),
+    clientsController: asClass(ClientsController).scoped(),
+    paymentsController: asClass(PaymentsController).scoped(),
+    cashRegisterController: asClass(CashRegisterController).scoped(),
+    expensesController: asClass(ExpensesController).scoped(),
+    commissionsController: asClass(CommissionsController).scoped(),
+    productsController: asClass(ProductsController).scoped(),
+    productSalesController: asClass(ProductSalesController).scoped(),
+    reportsController: asClass(ReportsController).scoped(),
   });
 
   return container;

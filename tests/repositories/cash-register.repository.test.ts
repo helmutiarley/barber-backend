@@ -1,11 +1,10 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import { ConflictError } from '../../src/errors/app-error';
 import { CashMovementsRepository } from '../../src/repositories/cash-movements.repository';
 import { CashRegisterSessionsRepository } from '../../src/repositories/cash-register-sessions.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeMovement, makeSession, makeUser } from '../support/factories';
+import { makeMovement, makeSession, makeUser, withTestShop } from '../support/factories';
 
 const PAGE = { limit: 50, offset: 0 };
 
@@ -16,8 +15,8 @@ describe('cash register repositories', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    sessions = new CashRegisterSessionsRepository({ dataSource } as Cradle);
-    movements = new CashMovementsRepository({ dataSource } as Cradle);
+    sessions = new CashRegisterSessionsRepository(withTestShop(dataSource));
+    movements = new CashMovementsRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

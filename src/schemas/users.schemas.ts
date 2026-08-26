@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { USER_ROLES } from '../entities/enums';
+
+const TENANT_ROLES = ['ADMIN', 'MANAGER', 'BARBER', 'CLIENT'] as const;
 
 const password = z.string().min(8, 'must be at least 8 characters').max(200);
 
@@ -25,7 +26,7 @@ export const createStaffSchema = z.object({
 });
 
 export const listUsersQuerySchema = z.object({
-  role: z.enum(USER_ROLES).optional(),
+  role: z.enum(TENANT_ROLES).optional(),
   active: z
     .enum(['true', 'false'])
     .transform((value) => value === 'true')
@@ -36,7 +37,7 @@ export const updateUserSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
     phone: z.string().trim().min(8).max(20).nullable().optional(),
-    role: z.enum(USER_ROLES).optional(),
+    role: z.enum(TENANT_ROLES).optional(),
     active: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update' });

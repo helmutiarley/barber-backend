@@ -25,6 +25,10 @@ const envSchema = z.object({
 
   CARD_FEE_RATE_DEBIT: z.coerce.number().min(0).max(1).default(0.015),
   CARD_FEE_RATE_CREDIT: z.coerce.number().min(0).max(1).default(0.035),
+
+  SHOPS_BASE_DOMAIN: z.string().default('barbearia360.app'),
+  PLATFORM_HOSTS: z.string().default('crm.barbearia360.app,crm.barbearia360.dev'),
+  SHOP_CACHE_TTL_MS: z.coerce.number().int().nonnegative().default(30_000),
 });
 
 export type LogLevel = z.infer<typeof envSchema>['LOG_LEVEL'];
@@ -43,6 +47,10 @@ export interface AppConfig {
   cancellationWindowHours: number;
 
   cardFeeRates: Record<'debit' | 'credit', number>;
+
+  shopsBaseDomain: string;
+  platformHosts: string[];
+  shopCacheTtlMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -69,5 +77,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       debit: result.data.CARD_FEE_RATE_DEBIT,
       credit: result.data.CARD_FEE_RATE_CREDIT,
     },
+    shopsBaseDomain: result.data.SHOPS_BASE_DOMAIN.toLowerCase(),
+    platformHosts: result.data.PLATFORM_HOSTS.split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter((host) => host.length > 0),
+    shopCacheTtlMs: result.data.SHOP_CACHE_TTL_MS,
   };
 }

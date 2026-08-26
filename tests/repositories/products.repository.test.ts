@@ -1,10 +1,9 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import { Product } from '../../src/entities/product.entity';
 import { ProductsRepository } from '../../src/repositories/products.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeProduct } from '../support/factories';
+import { makeProduct, withTestShop } from '../support/factories';
 
 const PAGE = { limit: 50, offset: 0 };
 
@@ -14,7 +13,7 @@ describe('products repository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new ProductsRepository({ dataSource } as Cradle);
+    repository = new ProductsRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

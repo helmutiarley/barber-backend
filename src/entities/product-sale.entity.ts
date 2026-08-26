@@ -26,6 +26,10 @@ export class ProductSale {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_product_sales_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   productId!: string;
 

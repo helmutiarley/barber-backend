@@ -17,7 +17,7 @@ import { Service } from './service.entity';
 @Entity('commission_rules')
 @Index('idx_commission_rules_lookup', ['appliesTo', 'barberId', 'serviceId'])
 
-@Index('uq_commission_rules_scope', ['barberId', 'serviceId', 'appliesTo'], {
+@Index('uq_commission_rules_scope', ['shopId', 'barberId', 'serviceId', 'appliesTo'], {
   unique: true,
   where: 'active',
 })
@@ -26,6 +26,10 @@ import { Service } from './service.entity';
 export class CommissionRule {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Index('idx_commission_rules_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
 
   @Column({ type: 'uuid', nullable: true })
   barberId!: string | null;

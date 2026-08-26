@@ -17,13 +17,16 @@ const testConfig: AppConfig = {
   shopTimezone: 'America/Sao_Paulo',
   cancellationWindowHours: 24,
   cardFeeRates: { debit: 0.015, credit: 0.035 },
+  shopsBaseDomain: 'test.local',
+  platformHosts: ['127.0.0.1'],
+  shopCacheTtlMs: 0,
 };
 
 function buildTestApp(dataSource: Partial<DataSource>) {
   const container = buildContainer({
     config: testConfig,
     logger: pino({ level: 'silent' }),
-    dataSource: dataSource as DataSource,
+    dataSource: { getRepository: vi.fn().mockReturnValue({}), ...dataSource } as DataSource,
   });
   return createApp(container);
 }

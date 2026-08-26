@@ -40,6 +40,7 @@ import { Payment } from '../entities/payment.entity';
 import { ProductSale } from '../entities/product-sale.entity';
 import { Product } from '../entities/product.entity';
 import { Service } from '../entities/service.entity';
+import { Shop } from '../entities/shop.entity';
 import { StockAdjustment } from '../entities/stock-adjustment.entity';
 import { User } from '../entities/user.entity';
 import { createDataSource } from '../lib/data-source';
@@ -48,6 +49,41 @@ import { hashPassword } from '../lib/password';
 import { shopRangeBounds, toInstant } from '../lib/shop-time';
 
 const SEED_PASSWORD = 'barber123';
+
+const DEV_SHOP_DOMAIN = 'localhost';
+const SUPER_ADMIN_EMAIL = 'super@barber.local';
+
+let seedShopId: string;
+
+async function upsertDefaultShop(dataSource: DataSource): Promise<Shop> {
+  const repository = dataSource.getRepository(Shop);
+  const existing = await repository.findOneBy({ slug: 'default' });
+
+  return repository.save({
+    ...(existing ? { id: existing.id } : {}),
+    name: 'Barbearia',
+    slug: 'default',
+    domain: existing?.domain ?? 'default.localhost',
+    customDomain: existing?.customDomain ?? DEV_SHOP_DOMAIN,
+    active: true,
+  });
+}
+
+async function upsertSuperAdmin(dataSource: DataSource, passwordHash: string): Promise<User> {
+  const repository = dataSource.getRepository(User);
+  const existing = await repository.findOneBy({ email: SUPER_ADMIN_EMAIL, shopId: IsNull() });
+
+  return repository.save({
+    ...(existing ? { id: existing.id } : {}),
+    shopId: null,
+    name: 'Platform Admin',
+    email: SUPER_ADMIN_EMAIL,
+    phone: null,
+    role: 'SUPER_ADMIN' as const,
+    active: true,
+    passwordHash,
+  });
+}
 
 interface SeedUser {
   name: string;
@@ -862,10 +898,11 @@ async function upsertUser(
   passwordHash: string,
 ): Promise<User> {
   const repository = dataSource.getRepository(User);
-  const existing = await repository.findOneBy({ email: seed.email });
+  const existing = await repository.findOneBy({ email: seed.email, shopId: seedShopId });
 
   return repository.save({
     ...(existing ? { id: existing.id } : {}),
+    shopId: seedShopId,
     name: seed.name,
     email: seed.email,
     phone: seed.phone ?? null,
@@ -885,6 +922,7 @@ async function upsertBarber(
 
   return repository.save({
     ...(existing ? { id: existing.id } : {}),
+    shopId: seedShopId,
     userId,
     displayName: seed.displayName,
     specialties: seed.specialties,
@@ -894,21 +932,23 @@ async function upsertBarber(
 
 async function upsertService(dataSource: DataSource, seed: SeedService): Promise<Service> {
   const repository = dataSource.getRepository(Service);
-  const existing = await repository.findOneBy({ name: seed.name });
+  const existing = await repository.findOneBy({ name: seed.name, shopId: seedShopId });
 
   return repository.save({
     ...(existing ? { id: existing.id } : {}),
     ...seed,
+    shopId: seedShopId,
     active: seed.active ?? true,
   });
 }
 
 async function upsertProduct(dataSource: DataSource, seed: SeedProduct): Promise<Product> {
   const repository = dataSource.getRepository(Product);
-  const existing = await repository.findOneBy({ name: seed.name });
+  const existing = await repository.findOneBy({ name: seed.name, shopId: seedShopId });
 
   return repository.save({
     ...(existing ? { id: existing.id } : { stockQuantity: 0 }),
+    shopId: seedShopId,
     name: seed.name,
     description: seed.description,
     price: seed.priceCents,
@@ -935,6 +975,7 @@ async function upsertStockAdjustment(
   await products.update({ id: productId }, { stockQuantity: resultingQuantity });
   await repository.save(
     repository.create({
+      shopId: seedShopId,
       productId,
       delta: seed.delta,
       reason: seed.reason,
@@ -982,6 +1023,7 @@ async function seedProductSale(
 
   const payment = await dataSource.getRepository(Payment).save(
     dataSource.getRepository(Payment).create({
+      shopId: seedShopId,
       appointmentId: null,
       amount: total,
       method: seed.method,
@@ -1034,6 +1076,7 @@ async function seedProductSale(
   for (const line of lines) {
     const sale = await sales.save(
       sales.create({
+        shopId: seedShopId,
         productId: line.product.id,
         quantity: line.quantity,
         unitPrice: line.product.price,
@@ -1065,6 +1108,7 @@ async function seedProductSale(
 
     await dataSource.getRepository(CommissionEntry).save(
       dataSource.getRepository(CommissionEntry).create({
+        shopId: seedShopId,
         barberId: context.barberId,
         productSaleId: sale.id,
         ruleId: context.rule.id,
@@ -1089,6 +1133,7 @@ async function upsertClientProfile(
 
   await repository.save({
     ...(existing ? { id: existing.id } : {}),
+    shopId: seedShopId,
     userId,
     birthday: seed.birthdayThisMonth
       ? birthdayThisMonth(seed.birthdayThisMonth.year, seed.birthdayThisMonth.day, zone)
@@ -1109,6 +1154,7 @@ async function upsertSchedule(
 
   await repository.save({
     ...(existing ? { id: existing.id } : {}),
+    shopId: seedShopId,
     barberId,
     weekday,
     startTime: seed.startTime,
@@ -1129,7 +1175,9 @@ async function upsertBlock(
   const existing = await repository.findOneBy({ barberId, startsAt });
   if (existing) return;
 
-  await repository.save(repository.create({ barberId, startsAt, endsAt, reason }));
+  await repository.save(
+    repository.create({ shopId: seedShopId, barberId, startsAt, endsAt, reason }),
+  );
 }
 
 async function upsertAppointment(
@@ -1143,7 +1191,7 @@ async function upsertAppointment(
   });
   if (existing) return existing;
 
-  return repository.save(repository.create(data));
+  return repository.save(repository.create({ ...data, shopId: seedShopId }));
 }
 
 async function upsertClosedSession(
@@ -1159,6 +1207,7 @@ async function upsertClosedSession(
 
   return repository.save(
     repository.create({
+      shopId: seedShopId,
       status: 'closed',
       openedBy: staffId,
       openedAt,
@@ -1181,7 +1230,13 @@ async function upsertOpenSession(
   if (existing) return existing;
 
   return repository.save(
-    repository.create({ status: 'open', openedBy: staffId, openedAt, openingBalance }),
+    repository.create({
+      shopId: seedShopId,
+      status: 'open',
+      openedBy: staffId,
+      openedAt,
+      openingBalance,
+    }),
   );
 }
 
@@ -1194,7 +1249,7 @@ async function upsertPayment(
   const existing = await repository.findOneBy(key);
   if (existing) return existing;
 
-  return repository.save(repository.create(data));
+  return repository.save(repository.create({ ...data, shopId: seedShopId }));
 }
 
 async function upsertExpense(dataSource: DataSource, data: Partial<Expense>): Promise<Expense> {
@@ -1202,7 +1257,7 @@ async function upsertExpense(dataSource: DataSource, data: Partial<Expense>): Pr
   const existing = await repository.findOneBy({ description: data.description });
   if (existing) return existing;
 
-  return repository.save(repository.create(data));
+  return repository.save(repository.create({ ...data, shopId: seedShopId }));
 }
 
 async function upsertCommissionRule(
@@ -1223,6 +1278,7 @@ async function upsertCommissionRule(
 
   return repository.save({
     ...(existing ? { id: existing.id } : {}),
+    shopId: seedShopId,
     barberId,
     serviceId,
     appliesTo: seed.appliesTo ?? 'services',
@@ -1241,7 +1297,7 @@ async function upsertCommissionEntry(
   const existing = await repository.findOneBy({ appointmentId });
   if (existing) return;
 
-  await repository.save(repository.create({ ...data, appointmentId }));
+  await repository.save(repository.create({ ...data, appointmentId, shopId: seedShopId }));
 }
 
 async function commissionBaseAmount(
@@ -1268,7 +1324,7 @@ async function upsertCommissionAdvance(
   const existing = await repository.findOneBy({ notes: data.notes });
   if (existing) return existing;
 
-  return repository.save(repository.create(data));
+  return repository.save(repository.create({ ...data, shopId: seedShopId }));
 }
 
 async function closeSeedPeriod(
@@ -1304,6 +1360,7 @@ async function closeSeedPeriod(
 
   const period = await periods.save(
     periods.create({
+      shopId: seedShopId,
       barberId,
       startsOn,
       endsOn,
@@ -1340,7 +1397,7 @@ async function upsertMovement(
   const existing = await repository.findOneBy(key);
   if (existing) return;
 
-  await repository.save(repository.create(data));
+  await repository.save(repository.create({ ...data, shopId: seedShopId }));
 }
 
 async function snapshotClosedSession(
@@ -1377,6 +1434,10 @@ async function main(): Promise<void> {
   try {
 
     const passwordHash = await hashPassword(SEED_PASSWORD);
+
+    const shop = await upsertDefaultShop(dataSource);
+    seedShopId = shop.id;
+    await upsertSuperAdmin(dataSource, passwordHash);
 
     const usersByEmail = new Map<string, User>();
     for (const seed of USERS) {
@@ -1768,7 +1829,9 @@ async function main(): Promise<void> {
         stockAdjustments,
         productSales,
         timezone: config.shopTimezone,
+        shop: { slug: shop.slug, domain: shop.customDomain },
         logins: {
+          superAdmin: SUPER_ADMIN_EMAIL,
           admin: 'admin@barber.local',
           manager: 'marcos@barber.local',
           barber: 'rafael@barber.local',

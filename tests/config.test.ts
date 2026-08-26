@@ -24,6 +24,9 @@ describe('loadConfig', () => {
       shopTimezone: 'America/Sao_Paulo',
       cancellationWindowHours: 24,
       cardFeeRates: { debit: 0.015, credit: 0.035 },
+      shopsBaseDomain: 'barbearia360.app',
+      platformHosts: ['crm.barbearia360.app', 'crm.barbearia360.dev'],
+      shopCacheTtlMs: 30_000,
     });
   });
 

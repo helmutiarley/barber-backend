@@ -8,6 +8,7 @@ import {
 import type { Cradle } from '../container';
 import type { ExpenseCategory, ExpenseKind, PaymentMethod } from '../entities/enums';
 import { Expense } from '../entities/expense.entity';
+import { requireShopId } from '../lib/shop-context';
 
 export interface NewExpense {
   description: string;
@@ -56,19 +57,21 @@ export interface Page {
 
 export class ExpensesRepository {
   private readonly dataSource: DataSource;
+  private readonly shopId: string;
 
-  constructor({ dataSource }: Cradle) {
+  constructor({ dataSource, currentShop }: Cradle) {
     this.dataSource = dataSource;
+    this.shopId = requireShopId(currentShop);
   }
 
   async create(data: NewExpense, manager?: EntityManager): Promise<Expense> {
     const repository = this.repo(manager);
 
-    return repository.save(repository.create(data));
+    return repository.save(repository.create({ ...data, shopId: this.shopId }));
   }
 
   async findById(id: string, manager?: EntityManager): Promise<Expense | null> {
-    return this.repo(manager).findOneBy({ id });
+    return this.repo(manager).findOneBy({ id, shopId: this.shopId });
   }
 
   async update(
@@ -76,19 +79,22 @@ export class ExpensesRepository {
     changes: ExpenseChanges,
     manager?: EntityManager,
   ): Promise<Expense | null> {
-    await this.repo(manager).update({ id }, changes);
+    await this.repo(manager).update({ id, shopId: this.shopId }, changes);
 
     return this.findById(id, manager);
   }
 
   async markPaid(id: string, data: PaidFields, manager?: EntityManager): Promise<Expense | null> {
-    const result = await this.repo(manager).update({ id, paidAt: IsNull() }, data);
+    const result = await this.repo(manager).update(
+      { id, shopId: this.shopId, paidAt: IsNull() },
+      data,
+    );
 
     return result.affected === 0 ? null : this.findById(id, manager);
   }
 
   async delete(id: string): Promise<void> {
-    await this.repo().delete({ id });
+    await this.repo().delete({ id, shopId: this.shopId });
   }
 
   async findMany(filters: ExpenseFilters, page: Page): Promise<[Expense[], number]> {
@@ -105,7 +111,9 @@ export class ExpensesRepository {
   }
 
   private query(filters: ExpenseFilters): SelectQueryBuilder<Expense> {
-    const query = this.repo().createQueryBuilder('e');
+    const query = this.repo()
+      .createQueryBuilder('e')
+      .where('e.shop_id = :shopId', { shopId: this.shopId });
 
     if (filters.category) query.andWhere('e.category = :category', { category: filters.category });
     if (filters.kind) query.andWhere('e.kind = :kind', { kind: filters.kind });

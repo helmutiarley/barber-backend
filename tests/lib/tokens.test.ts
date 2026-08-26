@@ -16,9 +16,13 @@ const config = {
 
 describe('access tokens', () => {
   it('round-trips the subject and role', () => {
-    const token = signAccessToken(config, { sub: 'user-1', role: 'ADMIN' });
+    const token = signAccessToken(config, { sub: 'user-1', role: 'ADMIN', shopId: 'shop-1' });
 
-    expect(verifyAccessToken(config, token)).toMatchObject({ sub: 'user-1', role: 'ADMIN' });
+    expect(verifyAccessToken(config, token)).toMatchObject({
+      sub: 'user-1',
+      role: 'ADMIN',
+      shopId: 'shop-1',
+    });
   });
 
   it('rejects a token signed with another secret', () => {
@@ -33,6 +37,7 @@ describe('access tokens', () => {
       {
         sub: 'user-1',
         role: 'CLIENT',
+        shopId: null,
       },
     );
 

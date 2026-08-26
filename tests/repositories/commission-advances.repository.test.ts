@@ -1,6 +1,5 @@
 import type { DataSource } from 'typeorm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Cradle } from '../../src/container';
 import { CommissionAdvancesRepository } from '../../src/repositories/commission-advances.repository';
 import { getTestDataSource, truncateAll } from '../support/db';
 import {
@@ -8,6 +7,7 @@ import {
   makeCommissionAdvance,
   makeCommissionPeriod,
   makeUser,
+  withTestShop,
 } from '../support/factories';
 
 const PAGE = { limit: 50, offset: 0 };
@@ -18,7 +18,7 @@ describe('commission advances repository', () => {
 
   beforeAll(async () => {
     dataSource = await getTestDataSource();
-    repository = new CommissionAdvancesRepository({ dataSource } as Cradle);
+    repository = new CommissionAdvancesRepository(withTestShop(dataSource));
   });
 
   beforeEach(async () => {

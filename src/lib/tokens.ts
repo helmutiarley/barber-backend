@@ -7,6 +7,7 @@ import { UnauthorizedError } from '../errors/app-error';
 export interface AccessTokenPayload {
   sub: string;
   role: UserRole;
+  shopId: string | null;
 }
 
 export function signAccessToken(config: AppConfig, payload: AccessTokenPayload): string {
@@ -22,7 +23,11 @@ export function verifyAccessToken(config: AppConfig, token: string): AccessToken
       throw new Error('malformed payload');
     }
 
-    return { sub: decoded.sub, role: decoded.role as UserRole };
+    return {
+      sub: decoded.sub,
+      role: decoded.role as UserRole,
+      shopId: typeof decoded.shopId === 'string' ? decoded.shopId : null,
+    };
   } catch {
     throw new UnauthorizedError('Invalid or expired token');
   }

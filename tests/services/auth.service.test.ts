@@ -75,6 +75,7 @@ function buildService(overrides: Overrides = {}) {
     refreshTokensRepository,
     config,
     clock,
+    currentShop: { id: 'shop-1', active: true },
   } as unknown as Cradle;
 
   return { service: new AuthService(cradle), usersRepository, refreshTokensRepository };

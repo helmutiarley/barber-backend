@@ -32,6 +32,10 @@ export class CommissionEntry {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Index('idx_commission_entries_shop_id')
+  @Column({ type: 'uuid' })
+  shopId!: string;
+
   @Column({ type: 'uuid' })
   barberId!: string;
 
