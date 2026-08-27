@@ -216,6 +216,10 @@ describe('commissions routes', () => {
   });
 
   describe('completing an appointment', () => {
+    beforeEach(async () => {
+      await makeSession(dataSource);
+    });
+
     it('writes the entry the most specific rule dictates', async () => {
       await makeCommissionRule(dataSource, { rate: 0.4 });
       await makeCommissionRule(dataSource, { barberId: barber.id, rate: 0.5 });
@@ -276,6 +280,7 @@ describe('commissions routes', () => {
 
   describe('a payment landing after completion', () => {
     it('moves a net entry down to what actually arrived', async () => {
+      await makeSession(dataSource);
       await makeCommissionRule(dataSource, { rate: 0.4, base: 'net' });
       const appointment = await confirmedCut();
       await post(`/v1/appointments/${appointment.id}/complete`, adminAuth);
@@ -294,13 +299,16 @@ describe('commissions routes', () => {
     });
 
     it('leaves a gross entry exactly where it was', async () => {
+      await makeSession(dataSource);
       await makeCommissionRule(dataSource, { rate: 0.4, base: 'gross' });
       const appointment = await confirmedCut();
       await post(`/v1/appointments/${appointment.id}/complete`, adminAuth);
 
-      await post(`/v1/appointments/${appointment.id}/payments`, adminAuth, {
+      const paid = await post(`/v1/appointments/${appointment.id}/payments`, adminAuth, {
         payments: [{ amountCents: 4500, method: 'credit' }],
       });
+
+      expect(paid.status).toBe(201);
 
       const entry = await dataSource
         .getRepository(CommissionEntry)

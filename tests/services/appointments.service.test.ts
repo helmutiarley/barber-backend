@@ -68,6 +68,9 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
   const commissionsService = {
     recordForAppointment: vi.fn().mockResolvedValue({ id: 'entry-1' }),
   };
+  const cashRegisterService = {
+    requireOpenSession: vi.fn().mockResolvedValue({ id: 'session-1' }),
+  };
   const clock: Clock = { now: () => NOW };
   const config = { cancellationWindowHours: 24 } as AppConfig;
 
@@ -77,6 +80,7 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
   Object.assign(usersRepository, overrides.usersRepository);
   Object.assign(availabilityService, overrides.availabilityService);
   Object.assign(commissionsService, overrides.commissionsService);
+  Object.assign(cashRegisterService, overrides.cashRegisterService);
 
   const manager = { marker: 'entity-manager' } as unknown as EntityManager;
   const dataSource = {
@@ -90,6 +94,7 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
     usersRepository,
     availabilityService,
     commissionsService,
+    cashRegisterService,
     dataSource,
     clock,
     config,
@@ -103,6 +108,7 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
     usersRepository,
     availabilityService,
     commissionsService,
+    cashRegisterService,
     dataSource,
     manager,
   };
@@ -476,6 +482,25 @@ describe('AppointmentsService.complete', () => {
     await expect(harness.service.complete('appointment-1', MANAGER_ACTOR)).rejects.toThrow(
       /No commission rule configured/,
     );
+  });
+
+  it('refuses to complete anything while the register is closed', async () => {
+    const harness = harnessFor(
+      { status: 'confirmed' },
+      {
+        cashRegisterService: {
+          requireOpenSession: vi
+            .fn()
+            .mockRejectedValue(new ConflictError('No cash register session is open')),
+        },
+      },
+    );
+
+    await expect(harness.service.complete('appointment-1', MANAGER_ACTOR)).rejects.toThrow(
+      /No cash register session is open/,
+    );
+    expect(harness.appointmentsRepository.update).not.toHaveBeenCalled();
+    expect(harness.commissionsService.recordForAppointment).not.toHaveBeenCalled();
   });
 
   it('refuses to complete one that was never confirmed', async () => {

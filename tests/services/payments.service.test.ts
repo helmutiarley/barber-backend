@@ -192,9 +192,23 @@ describe('PaymentsService.recordPayments', () => {
       harness.manager,
     );
 
-    expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledTimes(1);
+    expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledTimes(2);
     expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'in', source: 'payment', amountCents: 3000 }),
+      expect.objectContaining({
+        type: 'in',
+        source: 'payment',
+        method: 'cash',
+        amountCents: 3000,
+      }),
+      harness.manager,
+    );
+    expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'in',
+        source: 'payment',
+        method: 'credit',
+        amountCents: 2000,
+      }),
       harness.manager,
     );
   });
@@ -214,7 +228,7 @@ describe('PaymentsService.recordPayments', () => {
     );
   });
 
-  it('stamps the open session onto the cash row and leaves the card row alone', async () => {
+  it('stamps the open session onto every row, whatever the method', async () => {
     const harness = buildService();
 
     await harness.service.recordPayments(
@@ -228,10 +242,10 @@ describe('PaymentsService.recordPayments', () => {
 
     const [rows] = harness.paymentsRepository.create.mock.calls[0] as [NewPayment[]];
     expect(rows[0]?.cashRegisterSessionId).toBe(openSession.id);
-    expect(rows[1]?.cashRegisterSessionId).toBeNull();
+    expect(rows[1]?.cashRegisterSessionId).toBe(openSession.id);
   });
 
-  it('never asks for the drawer when nothing is paid in cash', async () => {
+  it('books a pix through the register under its own method', async () => {
     const harness = buildService();
 
     await harness.service.recordPayments(
@@ -240,11 +254,19 @@ describe('PaymentsService.recordPayments', () => {
       MANAGER,
     );
 
-    expect(harness.cashRegisterService.requireOpenSession).not.toHaveBeenCalled();
-    expect(harness.cashRegisterService.recordMovement).not.toHaveBeenCalled();
+    expect(harness.cashRegisterService.requireOpenSession).toHaveBeenCalled();
+    expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'in',
+        source: 'payment',
+        method: 'pix',
+        amountCents: 5000,
+      }),
+      harness.manager,
+    );
   });
 
-  it('refuses cash when no register is open', async () => {
+  it('refuses every method when no register is open', async () => {
     const harness = buildService({
       cashRegisterService: {
         requireOpenSession: vi
@@ -253,13 +275,11 @@ describe('PaymentsService.recordPayments', () => {
       },
     });
 
-    await expect(
-      harness.service.recordPayments(
-        appointment.id,
-        [{ amountCents: 5000, method: 'cash' }],
-        MANAGER,
-      ),
-    ).rejects.toBeInstanceOf(ConflictError);
+    for (const method of ['cash', 'pix', 'credit'] as const) {
+      await expect(
+        harness.service.recordPayments(appointment.id, [{ amountCents: 5000, method }], MANAGER),
+      ).rejects.toBeInstanceOf(ConflictError);
+    }
   });
 
   it('refuses to overpay by a single cent', async () => {
@@ -438,7 +458,7 @@ describe('PaymentsService.recordForSale', () => {
     );
   });
 
-  it('snapshots the card fee and leaves the register alone', async () => {
+  it('snapshots the card fee and still books the gross through the register', async () => {
     const harness = buildService();
 
     const payment = await harness.service.recordForSale(
@@ -448,8 +468,10 @@ describe('PaymentsService.recordForSale', () => {
     );
 
     expect(payment).toMatchObject({ cardFeeCents: 350, netAmountCents: 9650 });
-    expect(harness.cashRegisterService.requireOpenSession).not.toHaveBeenCalled();
-    expect(harness.cashRegisterService.recordMovement).not.toHaveBeenCalled();
+    expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'credit', amountCents: 10_000 }),
+      harness.manager,
+    );
   });
 
   it('refuses a cash sale with the register closed', async () => {
@@ -569,19 +591,19 @@ describe('PaymentsService.voidPayment', () => {
     );
   });
 
-  it('moves no cash when the payment was a card one', async () => {
+  it('reverses a card payment under its own method', async () => {
     const harness = buildService({
       paymentsRepository: {
-        findById: vi
-          .fn()
-          .mockResolvedValue({ ...cashPayment, method: 'credit', cashRegisterSessionId: null }),
+        findById: vi.fn().mockResolvedValue({ ...cashPayment, method: 'credit' }),
       },
     });
 
     await harness.service.voidPayment(cashPayment.id, {}, MANAGER);
 
-    expect(harness.cashRegisterService.requireOpenSession).not.toHaveBeenCalled();
-    expect(harness.cashRegisterService.recordMovement).not.toHaveBeenCalled();
+    expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'out', method: 'credit', amountCents: cashPayment.amount }),
+      harness.manager,
+    );
   });
 
   it('shrinks a net commission, since the money it counted is going back', async () => {

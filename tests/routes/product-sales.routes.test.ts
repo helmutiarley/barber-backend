@@ -123,7 +123,23 @@ describe('product sales routes', () => {
       ).toBe(5);
     });
 
-    it('takes a card sale with the register closed, snapshotting the fee', async () => {
+    it('refuses a card sale with the register closed too', async () => {
+      const pomade = await makeProduct(dataSource, { price: 10_000, stockQuantity: 5 });
+
+      const response = await post('/v1/product-sales', managerAuth, {
+        items: [{ productId: pomade.id, quantity: 1 }],
+        method: 'credit',
+      });
+
+      expect(response.status).toBe(409);
+      expect(await dataSource.getRepository(Payment).count()).toBe(0);
+      expect(
+        (await dataSource.getRepository(Product).findOneBy({ id: pomade.id }))?.stockQuantity,
+      ).toBe(5);
+    });
+
+    it('books a card sale against the session without touching the drawer', async () => {
+      await makeSession(dataSource, { openingBalance: 10_000 });
       const pomade = await makeProduct(dataSource, { price: 10_000, stockQuantity: 5 });
 
       const response = await post('/v1/product-sales', managerAuth, {
@@ -133,7 +149,10 @@ describe('product sales routes', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.data).toMatchObject({ cardFeeCents: 350, netTotalCents: 9650 });
-      expect(await dataSource.getRepository(CashMovement).count()).toBe(0);
+
+      const movements = await dataSource.getRepository(CashMovement).findBy({});
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({ type: 'in', method: 'credit', amount: 10_000 });
     });
 
     it('credits the seller through a products rule', async () => {

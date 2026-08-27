@@ -136,13 +136,52 @@ describe('cash register repositories', () => {
         amount: 2000,
       });
 
-      expect(await movements.sumBySession(session.id)).toEqual({ in: 7500, out: 2000 });
+      expect(await movements.sumBySession(session.id)).toEqual({
+        in: 7500,
+        out: 2000,
+        cashIn: 7500,
+        cashOut: 2000,
+        byMethod: [{ method: 'cash', in: 7500, out: 2000 }],
+      });
+    });
+
+    it('splits the totals by method, keeping the drawer on its own', async () => {
+      const session = await makeSession(dataSource);
+      await makeMovement(dataSource, { sessionId: session.id, type: 'in', amount: 4500 });
+      await makeMovement(dataSource, {
+        sessionId: session.id,
+        type: 'in',
+        method: 'pix',
+        amount: 3000,
+      });
+      await makeMovement(dataSource, {
+        sessionId: session.id,
+        type: 'out',
+        source: 'withdrawal',
+        amount: 2000,
+      });
+
+      const totals = await movements.sumBySession(session.id);
+
+      expect(totals).toMatchObject({ in: 7500, out: 2000, cashIn: 4500, cashOut: 2000 });
+      expect(totals.byMethod).toEqual(
+        expect.arrayContaining([
+          { method: 'cash', in: 4500, out: 2000 },
+          { method: 'pix', in: 3000, out: 0 },
+        ]),
+      );
     });
 
     it('reports zero for a session nothing has moved through', async () => {
       const session = await makeSession(dataSource);
 
-      expect(await movements.sumBySession(session.id)).toEqual({ in: 0, out: 0 });
+      expect(await movements.sumBySession(session.id)).toEqual({
+        in: 0,
+        out: 0,
+        cashIn: 0,
+        cashOut: 0,
+        byMethod: [],
+      });
     });
 
     it('counts only its own session', async () => {
@@ -151,7 +190,13 @@ describe('cash register repositories', () => {
       await makeMovement(dataSource, { sessionId: yesterday.id, amount: 9999 });
       await makeMovement(dataSource, { sessionId: today.id, amount: 1000 });
 
-      expect(await movements.sumBySession(today.id)).toEqual({ in: 1000, out: 0 });
+      expect(await movements.sumBySession(today.id)).toEqual({
+        in: 1000,
+        out: 0,
+        cashIn: 1000,
+        cashOut: 0,
+        byMethod: [{ method: 'cash', in: 1000, out: 0 }],
+      });
     });
 
     it('lists a session in the order the money moved', async () => {

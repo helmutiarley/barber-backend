@@ -18,6 +18,7 @@ import type { BarbersRepository } from '../repositories/barbers.repository';
 import type { ServicesRepository } from '../repositories/services.repository';
 import type { UsersRepository } from '../repositories/users.repository';
 import type { AvailabilityService } from './availability.service';
+import type { CashRegisterService } from './cash-register.service';
 import type { CommissionsService } from './commissions.service';
 
 export interface WalkInClientInput {
@@ -125,6 +126,7 @@ export class AppointmentsService {
   private readonly availabilityService: AvailabilityService;
 
   private readonly commissionsService: CommissionsService;
+  private readonly cashRegisterService: CashRegisterService;
 
   private readonly dataSource: DataSource;
   private readonly clock: Clock;
@@ -137,6 +139,7 @@ export class AppointmentsService {
     usersRepository,
     availabilityService,
     commissionsService,
+    cashRegisterService,
     dataSource,
     clock,
     config,
@@ -147,6 +150,7 @@ export class AppointmentsService {
     this.usersRepository = usersRepository;
     this.availabilityService = availabilityService;
     this.commissionsService = commissionsService;
+    this.cashRegisterService = cashRegisterService;
     this.dataSource = dataSource;
     this.clock = clock;
     this.config = config;
@@ -281,6 +285,8 @@ export class AppointmentsService {
     assertTransition(appointment, 'completed');
 
     const updated = await withTransaction(this.dataSource, async (manager) => {
+      await this.cashRegisterService.requireOpenSession(manager);
+
       const completed = await this.appointmentsRepository.update(
         appointment.id,
         { status: 'completed' },

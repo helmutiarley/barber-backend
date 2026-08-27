@@ -6,6 +6,7 @@ import { createApp } from '../../src/app';
 import { loadConfig, type AppConfig } from '../../src/config';
 import { buildContainer } from '../../src/container';
 import { Barber } from '../../src/entities/barber.entity';
+import { CashRegisterSession } from '../../src/entities/cash-register-session.entity';
 import { Service } from '../../src/entities/service.entity';
 import { User } from '../../src/entities/user.entity';
 import { getTestDataSource, truncateAll } from '../support/db';
@@ -14,6 +15,7 @@ import {
   makeBarber,
   makeCommissionRule,
   makeService,
+  makeSession,
   makeUser,
   makeWorkingWeek,
 } from '../support/factories';
@@ -614,6 +616,7 @@ describe('appointments routes', () => {
       appointmentId = (await book()).body.data.id;
 
       await makeCommissionRule(dataSource);
+      await makeSession(dataSource);
     });
 
     it('walks book → confirm → complete', async () => {
@@ -624,6 +627,18 @@ describe('appointments routes', () => {
       const completed = await post('complete', managerAuth);
       expect(completed.status).toBe(200);
       expect(completed.body.data.status).toBe('completed');
+    });
+
+    it('refuses to complete anything with the register closed', async () => {
+      await post('confirm', managerAuth);
+      await dataSource
+        .getRepository(CashRegisterSession)
+        .update({ status: 'open' }, { status: 'closed' });
+
+      const response = await post('complete', managerAuth);
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toMatch(/No cash register session is open/);
     });
 
     it('refuses to complete an appointment nobody confirmed', async () => {

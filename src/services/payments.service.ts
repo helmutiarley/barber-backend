@@ -115,29 +115,22 @@ export class PaymentsService {
     const rows = items.map((item) => this.toRow(appointment, item, actor));
     await this.assertNoOverpay(appointment, rows);
 
-    const needsDrawer = rows.some((row) => row.method === 'cash');
-
     const payments = await withTransaction(this.dataSource, async (manager) => {
 
-      const session = needsDrawer
-        ? await this.cashRegisterService.requireOpenSession(manager)
-        : null;
+      const session = await this.cashRegisterService.requireOpenSession(manager);
 
       const created = await this.paymentsRepository.create(
-        rows.map((row) =>
-          row.method === 'cash' ? { ...row, cashRegisterSessionId: session?.id ?? null } : row,
-        ),
+        rows.map((row) => ({ ...row, cashRegisterSessionId: session.id })),
         manager,
       );
 
       for (const payment of created) {
-        if (payment.method !== 'cash' || !payment.cashRegisterSessionId) continue;
-
         await this.cashRegisterService.recordMovement(
           {
-            sessionId: payment.cashRegisterSessionId,
+            sessionId: session.id,
             type: 'in',
             source: 'payment',
+            method: payment.method,
             amountCents: payment.amount,
             paymentId: payment.id,
             createdBy: actor.id,
@@ -160,8 +153,7 @@ export class PaymentsService {
     manager: EntityManager,
   ): Promise<PaymentDto> {
     const cardFee = this.cardFeeFor(input.method, input.amountCents);
-    const session =
-      input.method === 'cash' ? await this.cashRegisterService.requireOpenSession(manager) : null;
+    const session = await this.cashRegisterService.requireOpenSession(manager);
 
     const [payment] = await this.paymentsRepository.create(
       [
@@ -171,7 +163,7 @@ export class PaymentsService {
           method: input.method,
           cardFee,
           netAmount: input.amountCents - cardFee,
-          cashRegisterSessionId: session?.id ?? null,
+          cashRegisterSessionId: session.id,
           receivedBy: actor.id,
           paidAt: this.clock.now(),
         },
@@ -179,19 +171,18 @@ export class PaymentsService {
       manager,
     );
 
-    if (session) {
-      await this.cashRegisterService.recordMovement(
-        {
-          sessionId: session.id,
-          type: 'in',
-          source: 'payment',
-          amountCents: payment.amount,
-          paymentId: payment.id,
-          createdBy: actor.id,
-        },
-        manager,
-      );
-    }
+    await this.cashRegisterService.recordMovement(
+      {
+        sessionId: session.id,
+        type: 'in',
+        source: 'payment',
+        method: payment.method,
+        amountCents: payment.amount,
+        paymentId: payment.id,
+        createdBy: actor.id,
+      },
+      manager,
+    );
 
     return toDto(payment);
   }
@@ -210,8 +201,7 @@ export class PaymentsService {
       throw new ConflictError('This payment has already been voided');
     }
 
-    const session =
-      payment.method === 'cash' ? await this.cashRegisterService.requireOpenSession(manager) : null;
+    const session = await this.cashRegisterService.requireOpenSession(manager);
 
     const voided = await this.paymentsRepository.void(
       payment.id,
@@ -222,20 +212,19 @@ export class PaymentsService {
       throw new NotFoundError(`Payment ${paymentId} not found`);
     }
 
-    if (session) {
-      await this.cashRegisterService.recordMovement(
-        {
-          sessionId: session.id,
-          type: 'out',
-          source: 'payment',
-          amountCents: payment.amount,
-          paymentId: payment.id,
-          description: 'Voided sale',
-          createdBy: actor.id,
-        },
-        manager,
-      );
-    }
+    await this.cashRegisterService.recordMovement(
+      {
+        sessionId: session.id,
+        type: 'out',
+        source: 'payment',
+        method: payment.method,
+        amountCents: payment.amount,
+        paymentId: payment.id,
+        description: 'Voided sale',
+        createdBy: actor.id,
+      },
+      manager,
+    );
 
     return toDto(voided);
   }
@@ -283,10 +272,7 @@ export class PaymentsService {
 
     const voided = await withTransaction(this.dataSource, async (manager) => {
 
-      const session =
-        payment.method === 'cash'
-          ? await this.cashRegisterService.requireOpenSession(manager)
-          : null;
+      const session = await this.cashRegisterService.requireOpenSession(manager);
 
       const updated = await this.paymentsRepository.void(
         payment.id,
@@ -294,20 +280,19 @@ export class PaymentsService {
         manager,
       );
 
-      if (session) {
-        await this.cashRegisterService.recordMovement(
-          {
-            sessionId: session.id,
-            type: 'out',
-            source: 'payment',
-            amountCents: payment.amount,
-            paymentId: payment.id,
-            description: 'Voided payment',
-            createdBy: actor.id,
-          },
-          manager,
-        );
-      }
+      await this.cashRegisterService.recordMovement(
+        {
+          sessionId: session.id,
+          type: 'out',
+          source: 'payment',
+          method: payment.method,
+          amountCents: payment.amount,
+          paymentId: payment.id,
+          description: 'Voided payment',
+          createdBy: actor.id,
+        },
+        manager,
+      );
 
       const appointment = payment.appointmentId
         ? await this.appointmentsRepository.findById(payment.appointmentId, manager)

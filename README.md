@@ -177,7 +177,7 @@ curl -s "localhost:3000/v1/clients/$CLIENT_ID/history?limit=5" -H "$AUTH" | jq '
 
 ### Taking the money
 
-Cash is the only method that touches the register, and it does so atomically: the payment and the cash movement are one write. The seed leaves a drawer open, so start by looking at it:
+Every method goes through the register, and does so atomically: the payment and its movement are one write. The register is the day's takings, not just the drawer — a pix is booked under `pix`, a card under its own method, and only `cash` counts towards the balance the shop physically counts at closing. No open session means no money can be taken at all. The seed leaves a drawer open, so start by looking at it:
 
 ```bash
 curl -s localhost:3000/v1/cash-register/current -H "$AUTH" | jq '.data.totals'
@@ -187,7 +187,7 @@ PAID=$(curl -s -X POST localhost:3000/v1/appointments/$APPOINTMENT_ID/payments -
   -d '{"payments":[{"amountCents":2000,"method":"cash"},{"amountCents":2500,"method":"credit"}]}')
 echo "$PAID" | jq '.data[] | {method, amountCents, cardFeeCents, netAmountCents}'
 
-# The drawer went up by the cash half only
+# `inCents` counts both halves; `cashInCents` and the expected balance only the cash one
 curl -s localhost:3000/v1/cash-register/current -H "$AUTH" | jq '.data.totals'
 
 # Undo the cash one as ADMIN: the row survives and a compensating movement goes out
@@ -212,13 +212,15 @@ curl -s -X POST localhost:3000/v1/cash-register/close -H "$AUTH" -H "$JSON" \
 | `POST /v1/appointments/:id/payments`    | ADMIN, MANAGER                  | one or more payments as a batch; overpay rolls all of it back  |
 | `GET /v1/appointments/:id/payments`     | staff, the barber who worked it | including voided ones — they are part of the story             |
 | `GET /v1/payments?method=&from=&to=`    | ADMIN, MANAGER                  | paginated with a `meta` block                                  |
-| `DELETE /v1/payments/:id`               | ADMIN                           | same-day soft void; cash writes a compensating `out` movement  |
+| `DELETE /v1/payments/:id`               | ADMIN                           | same-day soft void; writes a compensating `out` movement       |
 | `POST /v1/cash-register/open` / `close` | ADMIN, MANAGER                  | one open drawer at a time; closing snapshots the difference    |
 | `GET /v1/cash-register/current`         | ADMIN, MANAGER                  | the open session and its live totals; 409 when nothing is open |
 | `POST /v1/cash-register/movements`      | ADMIN, MANAGER                  | withdrawal, deposit or adjustment — never `payment`            |
 | `GET /v1/cash-register/sessions[/:id]`  | ADMIN, MANAGER                  | history, and one session with its movements                    |
 
-Card fees are snapshotted per payment from `CARD_FEE_RATE_DEBIT` and `CARD_FEE_RATE_CREDIT`, so changing a rate never rewrites what was already taken. Payments only go against `confirmed` or `completed` appointments, may not add up to more than the price, and can be backdated inside the current shop day but never into another one or into the future. Cash with no open register is a 409 and leaves nothing behind — no payment, no movement. Voiding is soft: the row stays readable with who and why, every sum stops counting it, and the amount is free to be paid again. Movements are append-only, and a closed session accepts none — corrections are an `adjustment` in the other direction.
+Card fees are snapshotted per payment from `CARD_FEE_RATE_DEBIT` and `CARD_FEE_RATE_CREDIT`, so changing a rate never rewrites what was already taken. Payments only go against `confirmed` or `completed` appointments, may not add up to more than the price, and can be backdated inside the current shop day but never into another one or into the future. Any method with no open register is a 409 that leaves nothing behind — no payment, no movement — and completing an appointment is refused for the same reason, since the work and the money belong to the same open day. Voiding is soft: the row stays readable with who and why, every sum stops counting it, and the amount is free to be paid again. Movements are append-only, and a closed session accepts none — corrections are an `adjustment` in the other direction.
+
+`totals` carries both readings: `inCents` and `outCents` are the whole day whatever the method, `cashInCents`, `cashOutCents` and `expectedBalanceCents` are the drawer alone, and `byMethod` breaks the take down per method for the screen that shows it. Closing measures the physical count against the drawer figures only, so a pix can never manufacture a difference. Expenses, vales and payouts still only move the register when they are paid in cash — money that never sat in the drawer does not leave it.
 
 ### What the shop spends
 
@@ -396,9 +398,9 @@ curl -s -X POST localhost:3000/v1/product-sales/$SALE_LINE_ID/void -H "$AUTH" -H
 | `GET /v1/product-sales/:id`                                    | ADMIN, MANAGER | every line of that line's basket                               |
 | `POST /v1/product-sales/:id/void`                              | ADMIN          | same-day only                                                  |
 
-**A sale is one transaction**: stock comes off the shelf, the payment is written (cash needs an open register and makes a movement, cards snapshot their fee), the lines are stored with the price they sold at, and the seller's commission is calculated. Anything that refuses — an empty shelf, a closed register — leaves nothing behind. Stock is checked first, so a customer who cannot be served never causes a payment to be written and rolled back.
+**A sale is one transaction**: stock comes off the shelf, the payment is written (any method needs an open register and makes a movement under its own method; cards also snapshot their fee), the lines are stored with the price they sold at, and the seller's commission is calculated. Anything that refuses — an empty shelf, a closed register — leaves nothing behind. Stock is checked first, so a customer who cannot be served never causes a payment to be written and rolled back.
 
-**The basket is the unit.** The lines share a payment, so `POST /:id/void` takes any line and undoes the whole sale — a payment cannot be partly voided. The void compensates rather than erases: stock goes back, the payment is voided (taking the cash out of whichever drawer is open now), and the commission entries keep their barber, rule and rate while earning zero. Once a commission period has closed over one of those entries, the void is refused with a 409.
+**The basket is the unit.** The lines share a payment, so `POST /:id/void` takes any line and undoes the whole sale — a payment cannot be partly voided. The void compensates rather than erases: stock goes back, the payment is voided (booking an `out` against whichever session is open now, under the method it came in on), and the commission entries keep their barber, rule and rate while earning zero. Once a commission period has closed over one of those entries, the void is refused with a 409.
 
 **A missing commission rule does not block a sale.** Completing an appointment does — the work is already done — but money at the till should not wait on payroll setup, so a sale with no matching `applies_to: products` rule simply earns nobody anything and still records who sold it. Rules resolve with no service to narrow by, so only `(barber, *)` and `(*, *)` can win, and a `net` rule shares the card fee across the basket in proportion to each line.
 

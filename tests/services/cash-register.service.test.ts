@@ -24,6 +24,16 @@ const openSession = {
 
 const closedSession = { ...openSession, id: 'session-0', status: 'closed' } as CashRegisterSession;
 
+function drawerTotals(cashIn: number, cashOut: number) {
+  return {
+    in: cashIn,
+    out: cashOut,
+    cashIn,
+    cashOut,
+    byMethod: [{ method: 'cash' as const, in: cashIn, out: cashOut }],
+  };
+}
+
 function buildService(
   overrides: {
     cashRegisterSessionsRepository?: Record<string, unknown>;
@@ -55,7 +65,7 @@ function buildService(
         ...data,
       })),
       findBySession: vi.fn().mockResolvedValue([]),
-      sumBySession: vi.fn().mockResolvedValue({ in: 0, out: 0 }),
+      sumBySession: vi.fn().mockResolvedValue(drawerTotals(0, 0)),
     },
     overrides.cashMovementsRepository,
   );
@@ -103,7 +113,7 @@ describe('CashRegisterService.close', () => {
   it('snapshots expected, counted and difference over an in/out mix', async () => {
     const harness = buildService({
       cashMovementsRepository: {
-        sumBySession: vi.fn().mockResolvedValue({ in: 42_000, out: 7000 }),
+        sumBySession: vi.fn().mockResolvedValue(drawerTotals(42_000, 7000)),
       },
     });
 
@@ -119,7 +129,7 @@ describe('CashRegisterService.close', () => {
 
   it('demands notes when the drawer does not match', async () => {
     const harness = buildService({
-      cashMovementsRepository: { sumBySession: vi.fn().mockResolvedValue({ in: 5000, out: 0 }) },
+      cashMovementsRepository: { sumBySession: vi.fn().mockResolvedValue(drawerTotals(5000, 0)) },
     });
 
     await expect(
@@ -130,7 +140,7 @@ describe('CashRegisterService.close', () => {
 
   it('accepts a shortfall that is explained', async () => {
     const harness = buildService({
-      cashMovementsRepository: { sumBySession: vi.fn().mockResolvedValue({ in: 5000, out: 0 }) },
+      cashMovementsRepository: { sumBySession: vi.fn().mockResolvedValue(drawerTotals(5000, 0)) },
     });
 
     const closed = await harness.service.close(
@@ -143,12 +153,34 @@ describe('CashRegisterService.close', () => {
 
   it('treats blank notes as no notes at all', async () => {
     const harness = buildService({
-      cashMovementsRepository: { sumBySession: vi.fn().mockResolvedValue({ in: 0, out: 0 }) },
+      cashMovementsRepository: { sumBySession: vi.fn().mockResolvedValue(drawerTotals(0, 0)) },
     });
 
     await expect(
       harness.service.close({ countedBalanceCents: 9900, notes: '   ' }, MANAGER),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('counts only the drawer, so pix and card cannot invent a difference', async () => {
+    const harness = buildService({
+      cashMovementsRepository: {
+        sumBySession: vi.fn().mockResolvedValue({
+          in: 42_000,
+          out: 0,
+          cashIn: 5000,
+          cashOut: 0,
+          byMethod: [
+            { method: 'cash', in: 5000, out: 0 },
+            { method: 'pix', in: 30_000, out: 0 },
+            { method: 'credit', in: 7000, out: 0 },
+          ],
+        }),
+      },
+    });
+
+    const closed = await harness.service.close({ countedBalanceCents: 15_000 }, MANAGER);
+
+    expect(closed).toMatchObject({ expectedBalanceCents: 15_000, differenceCents: 0 });
   });
 
   it('refuses to close when nothing is open', async () => {
@@ -166,18 +198,51 @@ describe('CashRegisterService.current', () => {
   it('reports live totals rather than the close snapshot', async () => {
     const harness = buildService({
       cashMovementsRepository: {
-        sumBySession: vi.fn().mockResolvedValue({ in: 12_000, out: 2000 }),
+        sumBySession: vi.fn().mockResolvedValue(drawerTotals(12_000, 2000)),
+      },
+    });
+
+    const current = await harness.service.current();
+
+    expect(current.totals).toMatchObject({
+      inCents: 12_000,
+      outCents: 2000,
+      expectedBalanceCents: 20_000,
+    });
+    expect(current.session.expectedBalanceCents).toBeNull();
+  });
+
+  it('totals every method but keeps the expected balance on the drawer alone', async () => {
+    const harness = buildService({
+      cashMovementsRepository: {
+        sumBySession: vi.fn().mockResolvedValue({
+          in: 22_000,
+          out: 2000,
+          cashIn: 12_000,
+          cashOut: 2000,
+          byMethod: [
+            { method: 'cash', in: 12_000, out: 2000 },
+            { method: 'pix', in: 10_000, out: 0 },
+          ],
+        }),
       },
     });
 
     const current = await harness.service.current();
 
     expect(current.totals).toEqual({
-      inCents: 12_000,
+      inCents: 22_000,
       outCents: 2000,
+      cashInCents: 12_000,
+      cashOutCents: 2000,
       expectedBalanceCents: 20_000,
+      byMethod: [
+        { method: 'cash', inCents: 12_000, outCents: 2000, netCents: 10_000 },
+        { method: 'pix', inCents: 10_000, outCents: 0, netCents: 10_000 },
+        { method: 'debit', inCents: 0, outCents: 0, netCents: 0 },
+        { method: 'credit', inCents: 0, outCents: 0, netCents: 0 },
+      ],
     });
-    expect(current.session.expectedBalanceCents).toBeNull();
   });
 
   it('is a miss, not a conflict, when the register is closed', async () => {
@@ -203,6 +268,7 @@ describe('CashRegisterService.recordManualMovement', () => {
         sessionId: openSession.id,
         type: 'out',
         source: 'withdrawal',
+        method: 'cash',
         amount: 3000,
         paymentId: null,
         expenseId: null,

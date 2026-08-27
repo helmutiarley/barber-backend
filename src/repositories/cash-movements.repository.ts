@@ -1,7 +1,7 @@
 import type { DataSource, EntityManager, Repository } from 'typeorm';
 import type { Cradle } from '../container';
 import { CashMovement } from '../entities/cash-movement.entity';
-import type { CashMovementSource, CashMovementType } from '../entities/enums';
+import type { CashMovementSource, CashMovementType, PaymentMethod } from '../entities/enums';
 import { decimalStringToCents } from '../lib/money';
 import { requireShopId } from '../lib/shop-context';
 
@@ -9,6 +9,7 @@ export interface NewMovement {
   sessionId: string;
   type: CashMovementType;
   source: CashMovementSource;
+  method?: PaymentMethod;
 
   amount: number;
   paymentId?: string | null;
@@ -19,12 +20,22 @@ export interface NewMovement {
   createdBy: string;
 }
 
-export interface MovementTotals {
+export interface MethodTotals {
+  method: PaymentMethod;
   in: number;
   out: number;
 }
 
-interface RawTotals {
+export interface MovementTotals {
+  in: number;
+  out: number;
+  cashIn: number;
+  cashOut: number;
+  byMethod: MethodTotals[];
+}
+
+interface RawMethodTotals {
+  method: PaymentMethod;
   in: string | null;
   out: string | null;
 }
@@ -43,6 +54,7 @@ export class CashMovementsRepository {
 
     return repository.save(
       repository.create({
+        method: 'cash',
         paymentId: null,
         expenseId: null,
         advanceId: null,
@@ -62,18 +74,30 @@ export class CashMovementsRepository {
   }
 
   async sumBySession(sessionId: string, manager?: EntityManager): Promise<MovementTotals> {
-    const raw = await this.repo(manager)
+    const rows = await this.repo(manager)
       .createQueryBuilder('m')
-      .select(`SUM(m.amount) FILTER (WHERE m.type = 'in')`, 'in')
+      .select('m.method::text', 'method')
+      .addSelect(`SUM(m.amount) FILTER (WHERE m.type = 'in')`, 'in')
       .addSelect(`SUM(m.amount) FILTER (WHERE m.type = 'out')`, 'out')
       .where('m.session_id = :sessionId', { sessionId })
       .andWhere('m.shop_id = :shopId', { shopId: this.shopId })
-      .getRawOne<RawTotals>();
+      .groupBy('1')
+      .getRawMany<RawMethodTotals>();
+
+    const byMethod = rows.map((row) => ({
+      method: row.method,
+      in: row.in ? decimalStringToCents(row.in) : 0,
+      out: row.out ? decimalStringToCents(row.out) : 0,
+    }));
+
+    const cash = byMethod.find((row) => row.method === 'cash');
 
     return {
-
-      in: raw?.in ? decimalStringToCents(raw.in) : 0,
-      out: raw?.out ? decimalStringToCents(raw.out) : 0,
+      in: byMethod.reduce((total, row) => total + row.in, 0),
+      out: byMethod.reduce((total, row) => total + row.out, 0),
+      cashIn: cash?.in ?? 0,
+      cashOut: cash?.out ?? 0,
+      byMethod,
     };
   }
 

@@ -211,7 +211,13 @@ describe('PaymentsRepository', () => {
     ).rejects.toThrow('something later in the flow failed');
 
     expect(await repository.sumPaidForAppointment(appointment.id)).toBe(0);
-    expect(await movements.sumBySession(session.id)).toEqual({ in: 0, out: 0 });
+    expect(await movements.sumBySession(session.id)).toEqual({
+      in: 0,
+      out: 0,
+      cashIn: 0,
+      cashOut: 0,
+      byMethod: [],
+    });
   });
 
   it('sees its own uncommitted writes through the manager', async () => {

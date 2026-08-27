@@ -426,11 +426,13 @@ const PAYMENTS: SeedPayment[] = [
   {
     appointment: { barber: 'rafael', day: -7, hour: 11 },
     items: [{ method: 'pix', amountCents: 3000 }],
+    drawer: 'closed',
     receivedBy: 'marcos',
   },
   {
     appointment: { barber: 'bruno', day: -7, hour: 14 },
     items: [{ method: 'credit', amountCents: 7000 }],
+    drawer: 'closed',
     receivedBy: 'patricia',
   },
   {
@@ -442,6 +444,7 @@ const PAYMENTS: SeedPayment[] = [
   {
     appointment: { barber: 'carla', day: -3, hour: 9, minute: 30 },
     items: [{ method: 'debit', amountCents: 6000 }],
+    drawer: 'closed',
     receivedBy: 'patricia',
   },
 
@@ -1049,6 +1052,7 @@ async function seedProductSale(
         sessionId: context.sessionId,
         type: 'in',
         source: 'payment',
+        method: seed.method,
         amount: total,
         paymentId: payment.id,
         createdBy: context.createdBy,
@@ -1063,6 +1067,7 @@ async function seedProductSale(
           sessionId: context.sessionId,
           type: 'out',
           source: 'payment',
+          method: seed.method,
           amount: total,
           paymentId: payment.id,
           description: 'Voided sale',
@@ -1397,7 +1402,7 @@ async function upsertMovement(
   const existing = await repository.findOneBy(key);
   if (existing) return;
 
-  await repository.save(repository.create({ ...data, shopId: seedShopId }));
+  await repository.save(repository.create({ method: 'cash', ...data, shopId: seedShopId }));
 }
 
 async function snapshotClosedSession(
@@ -1407,10 +1412,12 @@ async function snapshotClosedSession(
   const repository = dataSource.getRepository(CashRegisterSession);
   const movements = await dataSource.getRepository(CashMovement).findBy({ sessionId: session.id });
 
-  const expected = movements.reduce(
-    (total, movement) => total + (movement.type === 'in' ? movement.amount : -movement.amount),
-    session.openingBalance,
-  );
+  const expected = movements
+    .filter((movement) => movement.method === 'cash')
+    .reduce(
+      (total, movement) => total + (movement.type === 'in' ? movement.amount : -movement.amount),
+      session.openingBalance,
+    );
 
   await repository.save({
     id: session.id,
@@ -1534,7 +1541,7 @@ async function main(): Promise<void> {
       const receivedBy = usersByEmail.get(`${seed.receivedBy}@barber.local`)!;
 
       for (const item of seed.items) {
-        const session = item.method === 'cash' ? drawers[seed.drawer ?? 'open'] : null;
+        const session = drawers[seed.drawer ?? 'open'];
         const cardFee = CARD_PAYMENT_METHODS.includes(item.method)
           ? Math.round(item.amountCents * config.cardFeeRates[item.method as 'debit' | 'credit'])
           : 0;
@@ -1563,6 +1570,7 @@ async function main(): Promise<void> {
             sessionId: session.id,
             type: 'in',
             source: 'payment',
+            method: item.method,
             amount: item.amountCents,
             paymentId: payment.id,
             createdBy: receivedBy.id,
@@ -1758,7 +1766,7 @@ async function main(): Promise<void> {
         barberId: barber?.id ?? null,
         clientId: client?.id ?? null,
         createdBy: createdBy.id,
-        sessionId: seed.method === 'cash' ? drawers[seed.drawer ?? 'open'].id : null,
+        sessionId: drawers[seed.drawer ?? 'open'].id,
         cardFeeRates: config.cardFeeRates,
         rule: rulesByScope.get(ruleKey(null, null, 'products')) ?? null,
 

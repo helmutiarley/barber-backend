@@ -300,6 +300,7 @@ export async function makeMovement(
     repository.create({
       type: 'in',
       source: 'deposit',
+      method: 'cash',
       amount: 5000,
       paymentId: null,
       expenseId: null,

@@ -2,10 +2,12 @@ import type { EntityManager } from 'typeorm';
 import type { Cradle } from '../container';
 import type { CashMovement } from '../entities/cash-movement.entity';
 import type { CashRegisterSession } from '../entities/cash-register-session.entity';
-import type {
-  CashMovementSource,
-  CashMovementType,
-  ManualCashMovementSource,
+import {
+  PAYMENT_METHODS,
+  type CashMovementSource,
+  type CashMovementType,
+  type ManualCashMovementSource,
+  type PaymentMethod,
 } from '../entities/enums';
 import { ConflictError, NotFoundError, ValidationError } from '../errors/app-error';
 import type { AuthenticatedUser } from '../lib/actor';
@@ -32,6 +34,7 @@ export interface MovementDto {
   sessionId: string;
   type: CashMovementType;
   source: CashMovementSource;
+  method: PaymentMethod;
   amountCents: number;
   paymentId: string | null;
   expenseId: string | null;
@@ -42,13 +45,23 @@ export interface MovementDto {
   createdAt: string;
 }
 
+export interface MethodTotalsDto {
+  method: PaymentMethod;
+  inCents: number;
+  outCents: number;
+  netCents: number;
+}
+
 export interface CurrentSessionDto {
   session: SessionDto;
   totals: {
     inCents: number;
     outCents: number;
 
+    cashInCents: number;
+    cashOutCents: number;
     expectedBalanceCents: number;
+    byMethod: MethodTotalsDto[];
   };
 }
 
@@ -87,6 +100,7 @@ export interface ModuleMovementInput {
   sessionId: string;
   type: CashMovementType;
   source: CashMovementSource;
+  method?: PaymentMethod;
   amountCents: number;
   paymentId?: string | null;
   expenseId?: string | null;
@@ -162,7 +176,19 @@ export class CashRegisterService {
       totals: {
         inCents: totals.in,
         outCents: totals.out,
-        expectedBalanceCents: session.openingBalance + totals.in - totals.out,
+        cashInCents: totals.cashIn,
+        cashOutCents: totals.cashOut,
+        expectedBalanceCents: session.openingBalance + totals.cashIn - totals.cashOut,
+        byMethod: PAYMENT_METHODS.map((method) => {
+          const row = totals.byMethod.find((entry) => entry.method === method);
+
+          return {
+            method,
+            inCents: row?.in ?? 0,
+            outCents: row?.out ?? 0,
+            netCents: (row?.in ?? 0) - (row?.out ?? 0),
+          };
+        }),
       },
     };
   }
@@ -209,6 +235,7 @@ export class CashRegisterService {
         sessionId: input.sessionId,
         type: input.type,
         source: input.source,
+        method: input.method ?? 'cash',
         amount: input.amountCents,
         paymentId: input.paymentId ?? null,
         expenseId: input.expenseId ?? null,
@@ -235,7 +262,7 @@ export class CashRegisterService {
   private async expectedBalance(session: CashRegisterSession): Promise<number> {
     const totals = await this.cashMovementsRepository.sumBySession(session.id);
 
-    return session.openingBalance + totals.in - totals.out;
+    return session.openingBalance + totals.cashIn - totals.cashOut;
   }
 
   private async assertSessionOpen(sessionId: string, manager?: EntityManager): Promise<void> {
@@ -272,6 +299,7 @@ function toMovementDto(movement: CashMovement): MovementDto {
     sessionId: movement.sessionId,
     type: movement.type,
     source: movement.source,
+    method: movement.method,
     amountCents: movement.amount,
     paymentId: movement.paymentId,
     expenseId: movement.expenseId,

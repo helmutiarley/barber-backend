@@ -80,7 +80,9 @@ describe('payments routes', () => {
   }
 
   describe('POST /v1/appointments/:id/payments', () => {
-    it('records a card payment with its fee snapshot and no cash movement', async () => {
+    it('records a card payment with its fee snapshot, booked against the session', async () => {
+      const session = await makeSession(dataSource);
+
       const response = await pay(managerAuth, [{ amountCents: 5000, method: 'credit' }]);
 
       expect(response.status).toBe(201);
@@ -89,9 +91,28 @@ describe('payments routes', () => {
         method: 'credit',
         cardFeeCents: 175,
         netAmountCents: 4825,
-        cashRegisterSessionId: null,
+        cashRegisterSessionId: session.id,
       });
-      expect(await countRows()).toEqual([1, 0]);
+      expect(await countRows()).toEqual([1, 1]);
+    });
+
+    it('keeps a card payment out of the drawer it never entered', async () => {
+      await makeSession(dataSource, { openingBalance: 10_000 });
+
+      await pay(managerAuth, [{ amountCents: 5000, method: 'credit' }]);
+
+      const current = await get('/v1/cash-register/current', managerAuth);
+      expect(current.body.data.totals).toMatchObject({
+        inCents: 5000,
+        cashInCents: 0,
+        expectedBalanceCents: 10_000,
+      });
+      expect(current.body.data.totals.byMethod).toContainEqual({
+        method: 'credit',
+        inCents: 5000,
+        outCents: 0,
+        netCents: 5000,
+      });
     });
 
     it('records a cash payment and its movement in the open session', async () => {
@@ -103,9 +124,10 @@ describe('payments routes', () => {
       expect(response.body.data[0].cashRegisterSessionId).toBe(session.id);
 
       const current = await get('/v1/cash-register/current', managerAuth);
-      expect(current.body.data.totals).toEqual({
+      expect(current.body.data.totals).toMatchObject({
         inCents: 5000,
         outCents: 0,
+        cashInCents: 5000,
         expectedBalanceCents: 15_000,
       });
     });
@@ -121,7 +143,7 @@ describe('payments routes', () => {
       expect(response.status).toBe(201);
       expect(response.body.data).toHaveLength(2);
 
-      expect(await countRows()).toEqual([2, 1]);
+      expect(await countRows()).toEqual([2, 2]);
     });
 
     it('persists nothing when the second item of a batch overpays', async () => {
@@ -148,7 +170,22 @@ describe('payments routes', () => {
       expect(await countRows()).toEqual([0, 0]);
     });
 
+    it('refuses a card payment too while the register is closed', async () => {
+      const response = await pay(managerAuth, [{ amountCents: 5000, method: 'credit' }]);
+
+      expect(response.status).toBe(409);
+      expect(await countRows()).toEqual([0, 0]);
+    });
+
+    it('refuses a pix payment too while the register is closed', async () => {
+      const response = await pay(managerAuth, [{ amountCents: 5000, method: 'pix' }]);
+
+      expect(response.status).toBe(409);
+      expect(await countRows()).toEqual([0, 0]);
+    });
+
     it('refuses to pay a cancelled appointment', async () => {
+      await makeSession(dataSource);
       const cancelled = await makeAppointment(dataSource, { status: 'cancelled' });
 
       const response = await pay(managerAuth, [{ amountCents: 1000, method: 'pix' }], cancelled.id);
@@ -157,6 +194,8 @@ describe('payments routes', () => {
     });
 
     it('lets a second payment settle the rest, then refuses the cent after', async () => {
+      await makeSession(dataSource);
+
       await pay(managerAuth, [{ amountCents: 3000, method: 'pix' }]);
 
       expect((await pay(managerAuth, [{ amountCents: 2000, method: 'pix' }])).status).toBe(201);
@@ -183,6 +222,7 @@ describe('payments routes', () => {
 
   describe('GET /v1/appointments/:id/payments', () => {
     it('lets the barber who worked it see how it was settled', async () => {
+      await makeSession(dataSource);
       await pay(managerAuth, [{ amountCents: 5000, method: 'debit' }]);
 
       const response = await get(`/v1/appointments/${appointment.id}/payments`, barberAuth);
@@ -257,6 +297,7 @@ describe('payments routes', () => {
     });
 
     it('frees the amount for a new payment', async () => {
+      await makeSession(dataSource);
       const recorded = await pay(managerAuth, [{ amountCents: 5000, method: 'pix' }]);
       await request(app)
         .delete(`/v1/payments/${recorded.body.data[0].id}`)
@@ -269,6 +310,7 @@ describe('payments routes', () => {
     });
 
     it('refuses a second void of the same payment', async () => {
+      await makeSession(dataSource);
       const recorded = await pay(managerAuth, [{ amountCents: 5000, method: 'pix' }]);
       const paymentId = recorded.body.data[0].id;
       const remove = () =>
@@ -279,6 +321,7 @@ describe('payments routes', () => {
     });
 
     it('is admin-only — a manager may take money but not unmake it', async () => {
+      await makeSession(dataSource);
       const recorded = await pay(managerAuth, [{ amountCents: 5000, method: 'pix' }]);
 
       const response = await request(app)

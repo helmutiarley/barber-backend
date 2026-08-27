@@ -12,7 +12,13 @@ import { moneyTransformer } from '../lib/money';
 import { CashRegisterSession } from './cash-register-session.entity';
 import { CommissionAdvance } from './commission-advance.entity';
 import { CommissionPeriod } from './commission-period.entity';
-import { CASH_MOVEMENT_TYPES, type CashMovementSource, type CashMovementType } from './enums';
+import {
+  CASH_MOVEMENT_TYPES,
+  PAYMENT_METHODS,
+  type CashMovementSource,
+  type CashMovementType,
+  type PaymentMethod,
+} from './enums';
 import { Expense } from './expense.entity';
 import { Payment } from './payment.entity';
 import { User } from './user.entity';
@@ -41,6 +47,14 @@ export class CashMovement {
 
   @Column({ type: 'varchar' })
   source!: CashMovementSource;
+
+  @Column({
+    type: 'enum',
+    enum: PAYMENT_METHODS,
+    enumName: 'payment_method',
+    default: 'cash',
+  })
+  method!: PaymentMethod;
 
   @Column({ type: 'numeric', precision: 10, scale: 2, transformer: moneyTransformer })
   amount!: number;

@@ -112,7 +112,35 @@ describe('cash register routes', () => {
       expect(response.body.data.totals).toEqual({
         inCents: 4500,
         outCents: 1500,
+        cashInCents: 4500,
+        cashOutCents: 1500,
         expectedBalanceCents: 13_000,
+        byMethod: [
+          { method: 'cash', inCents: 4500, outCents: 1500, netCents: 3000 },
+          { method: 'pix', inCents: 0, outCents: 0, netCents: 0 },
+          { method: 'debit', inCents: 0, outCents: 0, netCents: 0 },
+          { method: 'credit', inCents: 0, outCents: 0, netCents: 0 },
+        ],
+      });
+    });
+
+    it('adds every method to the take but leaves the drawer to cash', async () => {
+      const session = await makeSession(dataSource, { openingBalance: 10_000 });
+      await makeMovement(dataSource, { sessionId: session.id, type: 'in', amount: 4500 });
+      await makeMovement(dataSource, {
+        sessionId: session.id,
+        type: 'in',
+        method: 'pix',
+        amount: 6000,
+      });
+
+      const response = await get('/v1/cash-register/current', managerAuth);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.totals).toMatchObject({
+        inCents: 10_500,
+        cashInCents: 4500,
+        expectedBalanceCents: 14_500,
       });
     });
 
