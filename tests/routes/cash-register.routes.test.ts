@@ -5,8 +5,14 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
 import { loadConfig, type AppConfig } from '../../src/config';
 import { buildContainer } from '../../src/container';
+import { shopDayBounds, toShopDate } from '../../src/lib/shop-time';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeAuthenticatedUser, makeMovement, makeSession } from '../support/factories';
+import {
+  makeAppointment,
+  makeAuthenticatedUser,
+  makeMovement,
+  makeSession,
+} from '../support/factories';
 
 const UNKNOWN_UUID = '11111111-1111-4111-8111-111111111111';
 
@@ -109,17 +115,19 @@ describe('cash register routes', () => {
       const response = await get('/v1/cash-register/current', managerAuth);
 
       expect(response.status).toBe(200);
+      expect(response.body.data.pendingAppointmentsCount).toBe(0);
       expect(response.body.data.totals).toEqual({
         inCents: 4500,
         outCents: 1500,
+        discountCents: 0,
         cashInCents: 4500,
         cashOutCents: 1500,
         expectedBalanceCents: 13_000,
         byMethod: [
-          { method: 'cash', inCents: 4500, outCents: 1500, netCents: 3000 },
-          { method: 'pix', inCents: 0, outCents: 0, netCents: 0 },
-          { method: 'debit', inCents: 0, outCents: 0, netCents: 0 },
-          { method: 'credit', inCents: 0, outCents: 0, netCents: 0 },
+          { method: 'cash', inCents: 4500, outCents: 1500, discountCents: 0, netCents: 3000 },
+          { method: 'pix', inCents: 0, outCents: 0, discountCents: 0, netCents: 0 },
+          { method: 'debit', inCents: 0, outCents: 0, discountCents: 0, netCents: 0 },
+          { method: 'credit', inCents: 0, outCents: 0, discountCents: 0, netCents: 0 },
         ],
       });
     });
@@ -236,6 +244,29 @@ describe('cash register routes', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.error.details).toMatchObject({ differenceCents: -200 });
+    });
+
+    it('refuses to close while an appointment still needs payment or completion', async () => {
+      await makeSession(dataSource, { openingBalance: 10_000 });
+      const { start } = shopDayBounds(
+        toShopDate(new Date(), config.shopTimezone),
+        config.shopTimezone,
+      );
+      await makeAppointment(dataSource, {
+        status: 'confirmed',
+        startsAt: new Date(start.getTime() + 10 * 60 * 60 * 1000),
+      });
+
+      const response = await post('/v1/cash-register/close', managerAuth, {
+        countedBalanceCents: 10_000,
+      });
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.details).toEqual({
+        reason: 'PENDING_APPOINTMENTS',
+        pendingAppointmentsCount: 1,
+      });
+      expect((await get('/v1/cash-register/current', managerAuth)).status).toBe(200);
     });
 
     it('accepts an explained shortfall', async () => {

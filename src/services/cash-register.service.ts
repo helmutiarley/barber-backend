@@ -1,9 +1,11 @@
 import type { EntityManager } from 'typeorm';
+import type { AppConfig } from '../config';
 import type { Cradle } from '../container';
 import type { CashMovement } from '../entities/cash-movement.entity';
 import type { CashRegisterSession } from '../entities/cash-register-session.entity';
 import {
   PAYMENT_METHODS,
+  type CashMovementDiscountReason,
   type CashMovementSource,
   type CashMovementType,
   type ManualCashMovementSource,
@@ -12,6 +14,8 @@ import {
 import { ConflictError, NotFoundError, ValidationError } from '../errors/app-error';
 import type { AuthenticatedUser } from '../lib/actor';
 import type { Clock } from '../lib/clock';
+import { shopDayBounds, toShopDate } from '../lib/shop-time';
+import type { AppointmentsRepository } from '../repositories/appointments.repository';
 import type { CashMovementsRepository } from '../repositories/cash-movements.repository';
 import type { CashRegisterSessionsRepository } from '../repositories/cash-register-sessions.repository';
 
@@ -36,6 +40,8 @@ export interface MovementDto {
   source: CashMovementSource;
   method: PaymentMethod;
   amountCents: number;
+  discountCents: number;
+  discountReason: CashMovementDiscountReason | null;
   paymentId: string | null;
   expenseId: string | null;
   advanceId: string | null;
@@ -49,14 +55,17 @@ export interface MethodTotalsDto {
   method: PaymentMethod;
   inCents: number;
   outCents: number;
+  discountCents: number;
   netCents: number;
 }
 
 export interface CurrentSessionDto {
   session: SessionDto;
+  pendingAppointmentsCount: number;
   totals: {
     inCents: number;
     outCents: number;
+    discountCents: number;
 
     cashInCents: number;
     cashOutCents: number;
@@ -102,6 +111,8 @@ export interface ModuleMovementInput {
   source: CashMovementSource;
   method?: PaymentMethod;
   amountCents: number;
+  discountCents?: number;
+  discountReason?: CashMovementDiscountReason | null;
   paymentId?: string | null;
   expenseId?: string | null;
   advanceId?: string | null;
@@ -116,18 +127,27 @@ export interface SessionFiltersInput {
 }
 
 export class CashRegisterService {
+  private readonly appointmentsRepository: AppointmentsRepository;
   private readonly cashRegisterSessionsRepository: CashRegisterSessionsRepository;
   private readonly cashMovementsRepository: CashMovementsRepository;
   private readonly clock: Clock;
+  private readonly config: AppConfig;
 
-  constructor({ cashRegisterSessionsRepository, cashMovementsRepository, clock }: Cradle) {
+  constructor({
+    appointmentsRepository,
+    cashRegisterSessionsRepository,
+    cashMovementsRepository,
+    clock,
+    config,
+  }: Cradle) {
+    this.appointmentsRepository = appointmentsRepository;
     this.cashRegisterSessionsRepository = cashRegisterSessionsRepository;
     this.cashMovementsRepository = cashMovementsRepository;
     this.clock = clock;
+    this.config = config;
   }
 
   async open(input: OpenSessionInput, actor: AuthenticatedUser): Promise<SessionDto> {
-
     if (await this.cashRegisterSessionsRepository.findOpen()) {
       throw new ConflictError('A cash register session is already open');
     }
@@ -143,6 +163,14 @@ export class CashRegisterService {
 
   async close(input: CloseSessionInput, actor: AuthenticatedUser): Promise<SessionDto> {
     const session = await this.requireOpenSession();
+    const pendingAppointmentsCount = await this.pendingAppointmentsCount();
+    if (pendingAppointmentsCount > 0) {
+      throw new ConflictError('There are appointments pending payment or completion', {
+        reason: 'PENDING_APPOINTMENTS',
+        pendingAppointmentsCount,
+      });
+    }
+
     const expected = await this.expectedBalance(session);
     const difference = input.countedBalanceCents - expected;
     const notes = input.notes?.trim() || null;
@@ -169,13 +197,18 @@ export class CashRegisterService {
 
   async current(): Promise<CurrentSessionDto> {
     const session = await this.requireOpenSession();
-    const totals = await this.cashMovementsRepository.sumBySession(session.id);
+    const [totals, pendingAppointmentsCount] = await Promise.all([
+      this.cashMovementsRepository.sumBySession(session.id),
+      this.pendingAppointmentsCount(),
+    ]);
 
     return {
       session: toSessionDto(session),
+      pendingAppointmentsCount,
       totals: {
         inCents: totals.in,
         outCents: totals.out,
+        discountCents: totals.discount,
         cashInCents: totals.cashIn,
         cashOutCents: totals.cashOut,
         expectedBalanceCents: session.openingBalance + totals.cashIn - totals.cashOut,
@@ -186,6 +219,7 @@ export class CashRegisterService {
             method,
             inCents: row?.in ?? 0,
             outCents: row?.out ?? 0,
+            discountCents: row?.discount ?? 0,
             netCents: (row?.in ?? 0) - (row?.out ?? 0),
           };
         }),
@@ -237,6 +271,8 @@ export class CashRegisterService {
         source: input.source,
         method: input.method ?? 'cash',
         amount: input.amountCents,
+        discountAmount: input.discountCents ?? 0,
+        discountReason: input.discountReason ?? null,
         paymentId: input.paymentId ?? null,
         expenseId: input.expenseId ?? null,
         advanceId: input.advanceId ?? null,
@@ -263,6 +299,14 @@ export class CashRegisterService {
     const totals = await this.cashMovementsRepository.sumBySession(session.id);
 
     return session.openingBalance + totals.cashIn - totals.cashOut;
+  }
+
+  private async pendingAppointmentsCount(): Promise<number> {
+    const now = this.clock.now();
+    const date = toShopDate(now, this.config.shopTimezone);
+    const { start, end } = shopDayBounds(date, this.config.shopTimezone);
+
+    return this.appointmentsRepository.countPendingClosureBetween(start, end);
   }
 
   private async assertSessionOpen(sessionId: string, manager?: EntityManager): Promise<void> {
@@ -301,6 +345,8 @@ function toMovementDto(movement: CashMovement): MovementDto {
     source: movement.source,
     method: movement.method,
     amountCents: movement.amount,
+    discountCents: movement.discountAmount,
+    discountReason: movement.discountReason,
     paymentId: movement.paymentId,
     expenseId: movement.expenseId,
     advanceId: movement.advanceId,

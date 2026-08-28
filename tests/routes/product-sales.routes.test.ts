@@ -152,7 +152,13 @@ describe('product sales routes', () => {
 
       const movements = await dataSource.getRepository(CashMovement).findBy({});
       expect(movements).toHaveLength(1);
-      expect(movements[0]).toMatchObject({ type: 'in', method: 'credit', amount: 10_000 });
+      expect(movements[0]).toMatchObject({
+        type: 'in',
+        method: 'credit',
+        amount: 9650,
+        discountAmount: 350,
+        discountReason: 'card_processing_fee',
+      });
     });
 
     it('credits the seller through a products rule', async () => {

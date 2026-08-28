@@ -141,7 +141,8 @@ describe('cash register repositories', () => {
         out: 2000,
         cashIn: 7500,
         cashOut: 2000,
-        byMethod: [{ method: 'cash', in: 7500, out: 2000 }],
+        discount: 0,
+        byMethod: [{ method: 'cash', in: 7500, out: 2000, discount: 0 }],
       });
     });
 
@@ -156,6 +157,14 @@ describe('cash register repositories', () => {
       });
       await makeMovement(dataSource, {
         sessionId: session.id,
+        type: 'in',
+        method: 'credit',
+        amount: 4825,
+        discountAmount: 175,
+        discountReason: 'card_processing_fee',
+      });
+      await makeMovement(dataSource, {
+        sessionId: session.id,
         type: 'out',
         source: 'withdrawal',
         amount: 2000,
@@ -163,11 +172,18 @@ describe('cash register repositories', () => {
 
       const totals = await movements.sumBySession(session.id);
 
-      expect(totals).toMatchObject({ in: 7500, out: 2000, cashIn: 4500, cashOut: 2000 });
+      expect(totals).toMatchObject({
+        in: 12_325,
+        out: 2000,
+        cashIn: 4500,
+        cashOut: 2000,
+        discount: 175,
+      });
       expect(totals.byMethod).toEqual(
         expect.arrayContaining([
-          { method: 'cash', in: 4500, out: 2000 },
-          { method: 'pix', in: 3000, out: 0 },
+          { method: 'cash', in: 4500, out: 2000, discount: 0 },
+          { method: 'pix', in: 3000, out: 0, discount: 0 },
+          { method: 'credit', in: 4825, out: 0, discount: 175 },
         ]),
       );
     });
@@ -180,7 +196,32 @@ describe('cash register repositories', () => {
         out: 0,
         cashIn: 0,
         cashOut: 0,
+        discount: 0,
         byMethod: [],
+      });
+    });
+
+    it('compensates the card discount when a payment is voided', async () => {
+      const session = await makeSession(dataSource);
+      const movement = {
+        sessionId: session.id,
+        source: 'payment' as const,
+        method: 'credit' as const,
+        amount: 4825,
+        discountAmount: 175,
+        discountReason: 'card_processing_fee' as const,
+      };
+
+      await makeMovement(dataSource, { ...movement, type: 'in' });
+      await makeMovement(dataSource, { ...movement, type: 'out' });
+
+      expect(await movements.sumBySession(session.id)).toEqual({
+        in: 4825,
+        out: 4825,
+        cashIn: 0,
+        cashOut: 0,
+        discount: 0,
+        byMethod: [{ method: 'credit', in: 4825, out: 4825, discount: 0 }],
       });
     });
 
@@ -195,7 +236,8 @@ describe('cash register repositories', () => {
         out: 0,
         cashIn: 1000,
         cashOut: 0,
-        byMethod: [{ method: 'cash', in: 1000, out: 0 }],
+        discount: 0,
+        byMethod: [{ method: 'cash', in: 1000, out: 0, discount: 0 }],
       });
     });
 

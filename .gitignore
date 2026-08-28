@@ -10,3 +10,4 @@ coverage/
 !.env.prod.example
 plans/
 specs/
+skills/

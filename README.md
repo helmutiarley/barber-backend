@@ -187,7 +187,7 @@ PAID=$(curl -s -X POST localhost:3000/v1/appointments/$APPOINTMENT_ID/payments -
   -d '{"payments":[{"amountCents":2000,"method":"cash"},{"amountCents":2500,"method":"credit"}]}')
 echo "$PAID" | jq '.data[] | {method, amountCents, cardFeeCents, netAmountCents}'
 
-# `inCents` counts both halves; `cashInCents` and the expected balance only the cash one
+# `inCents` counts the net received; `discountCents` exposes card fees
 curl -s localhost:3000/v1/cash-register/current -H "$AUTH" | jq '.data.totals'
 
 # Undo the cash one as ADMIN: the row survives and a compensating movement goes out
@@ -218,9 +218,9 @@ curl -s -X POST localhost:3000/v1/cash-register/close -H "$AUTH" -H "$JSON" \
 | `POST /v1/cash-register/movements`      | ADMIN, MANAGER                  | withdrawal, deposit or adjustment — never `payment`            |
 | `GET /v1/cash-register/sessions[/:id]`  | ADMIN, MANAGER                  | history, and one session with its movements                    |
 
-Card fees are snapshotted per payment from `CARD_FEE_RATE_DEBIT` and `CARD_FEE_RATE_CREDIT`, so changing a rate never rewrites what was already taken. Payments only go against `confirmed` or `completed` appointments, may not add up to more than the price, and can be backdated inside the current shop day but never into another one or into the future. Any method with no open register is a 409 that leaves nothing behind — no payment, no movement — and completing an appointment is refused for the same reason, since the work and the money belong to the same open day. Voiding is soft: the row stays readable with who and why, every sum stops counting it, and the amount is free to be paid again. Movements are append-only, and a closed session accepts none — corrections are an `adjustment` in the other direction.
+Card fees are snapshotted per payment from `CARD_FEE_RATE_DEBIT` and `CARD_FEE_RATE_CREDIT`, so changing a rate never rewrites what was already taken. The register books card payments at their net amount and keeps the fee as a `card_processing_fee` discount on the movement. Payments only go against `confirmed` or `completed` appointments, may not add up to more than the price, and can be backdated inside the current shop day but never into another one or into the future. Any method with no open register is a 409 that leaves nothing behind — no payment, no movement — and completing an appointment is refused for the same reason, since the work and the money belong to the same open day. Closing is refused while an appointment from the current shop day remains active or completed without full payment. Voiding is soft: the row stays readable with who and why, every sum stops counting it, and the amount is free to be paid again. Movements are append-only, and a closed session accepts none — corrections are an `adjustment` in the other direction.
 
-`totals` carries both readings: `inCents` and `outCents` are the whole day whatever the method, `cashInCents`, `cashOutCents` and `expectedBalanceCents` are the drawer alone, and `byMethod` breaks the take down per method for the screen that shows it. Closing measures the physical count against the drawer figures only, so a pix can never manufacture a difference. Expenses, vales and payouts still only move the register when they are paid in cash — money that never sat in the drawer does not leave it.
+`totals` carries both readings: `inCents` is the net amount received across all methods, `discountCents` is the total deducted in card fees, `outCents` is what left the register, `cashInCents`, `cashOutCents` and `expectedBalanceCents` are the drawer alone, and `byMethod` breaks the same figures down per method. Closing measures the physical count against the drawer figures only, so a pix can never manufacture a difference. Expenses, vales and payouts still only move the register when they are paid in cash — money that never sat in the drawer does not leave it.
 
 ### What the shop spends
 

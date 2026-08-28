@@ -216,6 +216,7 @@ describe('PaymentsRepository', () => {
       out: 0,
       cashIn: 0,
       cashOut: 0,
+      discount: 0,
       byMethod: [],
     });
   });

@@ -196,6 +196,20 @@ describe('AppointmentsService.createAppointment', () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
+  it('does not let staff force a start time in the past', async () => {
+    await expect(
+      harness.service.createAppointment(
+        {
+          ...validInput,
+          startsAt: new Date('2030-03-01T08:00:00.000Z'),
+          force: true,
+        },
+        MANAGER_ACTOR,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(harness.appointmentsRepository.create).not.toHaveBeenCalled();
+  });
+
   it('books for the caller and records who created it', async () => {
     await harness.service.createAppointment({ ...validInput, clientId: undefined }, CLIENT_ACTOR);
 

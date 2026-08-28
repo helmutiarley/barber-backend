@@ -175,7 +175,6 @@ const SCHEDULES: SeedSchedule[] = [
     breakEnd: '13:00:00',
   },
   { barber: 'diego', weekdays: WORKING_WEEK, startTime: '08:00:00', endTime: '17:00:00' },
-
 ];
 
 interface SeedBlock {
@@ -240,7 +239,6 @@ const SERVICES: SeedService[] = [
 ];
 
 interface SeedClientProfile {
-
   client: string;
   birthday?: string;
 
@@ -267,7 +265,6 @@ const CLIENT_PROFILES: SeedClientProfile[] = [
     preferences: 'Prefere o fim da tarde',
     internalNotes: 'Conta desativada; histórico mantido para os relatórios',
   },
-
 ];
 
 interface SeedAppointment {
@@ -286,7 +283,6 @@ interface SeedAppointment {
 }
 
 const APPOINTMENTS: SeedAppointment[] = [
-
   { barber: 'rafael', client: 'joao', service: 'Corte', day: -7, hour: 10, status: 'completed' },
   { barber: 'rafael', client: 'maria', service: 'Barba', day: -7, hour: 11, status: 'completed' },
   {
@@ -407,7 +403,6 @@ const APPOINTMENTS: SeedAppointment[] = [
 type SeedDrawer = 'open' | 'closed';
 
 interface SeedPayment {
-
   appointment: { barber: string; day: number; hour: number; minute?: number };
 
   items: { method: PaymentMethod; amountCents: number }[];
@@ -506,7 +501,6 @@ const MANUAL_MOVEMENTS: SeedManualMovement[] = [
 const CLOSED_SESSION_SHORTFALL = 150;
 
 interface SeedExpense {
-
   description: string;
   category: ExpenseCategory;
   kind: ExpenseKind;
@@ -579,7 +573,6 @@ const EXPENSES: SeedExpense[] = [
 ];
 
 interface SeedCommissionRule {
-
   barber: string | null;
 
   service: string | null;
@@ -605,7 +598,6 @@ const COMMISSION_RULES: SeedCommissionRule[] = [
 ];
 
 interface SeedCommissionEntry {
-
   appointment: { barber: string; day: number; hour: number; minute?: number };
 
   rule: { barber: string | null; service: string | null };
@@ -746,7 +738,6 @@ const PRODUCTS: SeedProduct[] = [
     ],
   },
   {
-
     name: 'Shampoo Anticaspa',
     description: 'Uso semanal, 250ml',
     priceCents: 4200,
@@ -786,7 +777,6 @@ const PRODUCTS: SeedProduct[] = [
     ],
   },
   {
-
     name: 'Minoxidil',
     description: 'Tratamento para crescimento de barba',
     priceCents: 8900,
@@ -822,7 +812,6 @@ const PRODUCTS: SeedProduct[] = [
 ];
 
 interface SeedProductSale {
-
   items: { product: string; quantity: number }[];
   method: PaymentMethod;
   drawer?: SeedDrawer;
@@ -1053,7 +1042,9 @@ async function seedProductSale(
         type: 'in',
         source: 'payment',
         method: seed.method,
-        amount: total,
+        amount: payment.netAmount,
+        discountAmount: payment.cardFee,
+        discountReason: payment.cardFee > 0 ? 'card_processing_fee' : null,
         paymentId: payment.id,
         createdBy: context.createdBy,
       },
@@ -1068,7 +1059,9 @@ async function seedProductSale(
           type: 'out',
           source: 'payment',
           method: seed.method,
-          amount: total,
+          amount: payment.netAmount,
+          discountAmount: payment.cardFee,
+          discountReason: payment.cardFee > 0 ? 'card_processing_fee' : null,
           paymentId: payment.id,
           description: 'Voided sale',
           createdBy: context.createdBy,
@@ -1402,7 +1395,15 @@ async function upsertMovement(
   const existing = await repository.findOneBy(key);
   if (existing) return;
 
-  await repository.save(repository.create({ method: 'cash', ...data, shopId: seedShopId }));
+  await repository.save(
+    repository.create({
+      method: 'cash',
+      discountAmount: 0,
+      discountReason: null,
+      ...data,
+      shopId: seedShopId,
+    }),
+  );
 }
 
 async function snapshotClosedSession(
@@ -1439,7 +1440,6 @@ async function main(): Promise<void> {
   await dataSource.initialize();
 
   try {
-
     const passwordHash = await hashPassword(SEED_PASSWORD);
 
     const shop = await upsertDefaultShop(dataSource);
@@ -1571,7 +1571,9 @@ async function main(): Promise<void> {
             type: 'in',
             source: 'payment',
             method: item.method,
-            amount: item.amountCents,
+            amount: payment.netAmount,
+            discountAmount: payment.cardFee,
+            discountReason: payment.cardFee > 0 ? 'card_processing_fee' : null,
             paymentId: payment.id,
             createdBy: receivedBy.id,
           },

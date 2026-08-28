@@ -5,7 +5,7 @@ import type { Service } from '../../src/entities/service.entity';
 import type { User } from '../../src/entities/user.entity';
 import { ConflictError } from '../../src/errors/app-error';
 import { getTestDataSource, truncateAll } from '../support/db';
-import { makeBarber, makeService, makeUser, withTestShop } from '../support/factories';
+import { makeBarber, makePayment, makeService, makeUser, withTestShop } from '../support/factories';
 import { AppointmentsRepository } from '../../src/repositories/appointments.repository';
 
 const AT_10_00 = new Date('2030-03-01T10:00:00.000Z');
@@ -221,6 +221,31 @@ describe('AppointmentsRepository', () => {
 
       expect(total).toBe(1);
       expect(rows[0].clientId).toBe(client.id);
+    });
+  });
+
+  describe('countPendingClosureBetween', () => {
+    it('counts active appointments and completed appointments awaiting payment', async () => {
+      await repository.create(booking(AT_10_00, AT_10_30));
+      const completed = await repository.create(booking(AT_10_30, AT_11_00));
+      await repository.update(completed.id, { status: 'completed' });
+
+      await expect(repository.countPendingClosureBetween(AT_10_00, AT_11_00)).resolves.toBe(2);
+    });
+
+    it('ignores completed appointments paid in full and terminal appointments', async () => {
+      const paid = await repository.create(booking(AT_10_00, AT_10_30));
+      await repository.update(paid.id, { status: 'completed' });
+      await makePayment(dataSource, {
+        appointmentId: paid.id,
+        amount: paid.price,
+        netAmount: paid.price,
+      });
+
+      const cancelled = await repository.create(booking(AT_10_30, AT_11_00));
+      await repository.update(cancelled.id, { status: 'cancelled' });
+
+      await expect(repository.countPendingClosureBetween(AT_10_00, AT_11_00)).resolves.toBe(0);
     });
   });
 

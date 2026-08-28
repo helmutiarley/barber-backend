@@ -1,5 +1,6 @@
 import {
   And,
+  Brackets,
   In,
   LessThan,
   LessThanOrEqual,
@@ -31,7 +32,6 @@ export type AppointmentChanges = Partial<
 >;
 
 export interface AppointmentFilters {
-
   from: Date;
   to: Date;
   barberId?: string;
@@ -111,6 +111,26 @@ export class AppointmentsRepository {
       },
       order: { startsAt: 'ASC' },
     });
+  }
+
+  async countPendingClosureBetween(from: Date, to: Date): Promise<number> {
+    return this.repo()
+      .createQueryBuilder('appointment')
+      .where('appointment.shopId = :shopId', { shopId: this.shopId })
+      .andWhere('appointment.startsAt >= :from', { from })
+      .andWhere('appointment.startsAt < :to', { to })
+      .andWhere(
+        new Brackets((query) => {
+          query
+            .where('appointment.status IN (:...activeStatuses)', {
+              activeStatuses: [...ACTIVE_APPOINTMENT_STATUSES],
+            })
+            .orWhere(
+              `appointment.status = 'completed' AND COALESCE((SELECT SUM(payment.amount) FROM payments payment WHERE payment.appointment_id = appointment.id AND payment.shop_id = :shopId AND payment.voided_at IS NULL), 0) < appointment.price`,
+            );
+        }),
+      )
+      .getCount();
   }
 
   async findMany(filters: AppointmentFilters, page: Page): Promise<[Appointment[], number]> {

@@ -15,6 +15,7 @@ import { CommissionPeriod } from './commission-period.entity';
 import {
   CASH_MOVEMENT_TYPES,
   PAYMENT_METHODS,
+  type CashMovementDiscountReason,
   type CashMovementSource,
   type CashMovementType,
   type PaymentMethod,
@@ -25,8 +26,12 @@ import { User } from './user.entity';
 
 @Entity('cash_movements')
 @Index('idx_cash_movements_session_id', ['sessionId'])
-
-@Check('chk_cash_movements_amount_positive', '"amount" > 0')
+@Check('chk_cash_movements_value_positive', '"amount" > 0 OR "discount_amount" > 0')
+@Check('chk_cash_movements_discount_non_negative', '"discount_amount" >= 0')
+@Check(
+  'chk_cash_movements_discount_reason',
+  `("discount_amount" = 0 AND "discount_reason" IS NULL) OR ("discount_amount" > 0 AND "discount_reason" IS NOT NULL)`,
+)
 export class CashMovement {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -58,6 +63,18 @@ export class CashMovement {
 
   @Column({ type: 'numeric', precision: 10, scale: 2, transformer: moneyTransformer })
   amount!: number;
+
+  @Column({
+    type: 'numeric',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    transformer: moneyTransformer,
+  })
+  discountAmount!: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  discountReason!: CashMovementDiscountReason | null;
 
   @Column({ type: 'uuid', nullable: true })
   paymentId!: string | null;

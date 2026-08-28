@@ -61,7 +61,6 @@ function buildService(
 ) {
   const paymentsRepository = Object.assign(
     {
-
       create: vi.fn(async (rows: NewPayment[]) =>
         rows.map((row, index) => ({ ...cashPayment, ...row, id: `payment-${index + 1}` })),
       ),
@@ -207,7 +206,9 @@ describe('PaymentsService.recordPayments', () => {
         type: 'in',
         source: 'payment',
         method: 'credit',
-        amountCents: 2000,
+        amountCents: 1930,
+        discountCents: 70,
+        discountReason: 'card_processing_fee',
       }),
       harness.manager,
     );
@@ -458,7 +459,7 @@ describe('PaymentsService.recordForSale', () => {
     );
   });
 
-  it('snapshots the card fee and still books the gross through the register', async () => {
+  it('books only the card net amount and identifies the processing discount', async () => {
     const harness = buildService();
 
     const payment = await harness.service.recordForSale(
@@ -469,7 +470,12 @@ describe('PaymentsService.recordForSale', () => {
 
     expect(payment).toMatchObject({ cardFeeCents: 350, netAmountCents: 9650 });
     expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledWith(
-      expect.objectContaining({ method: 'credit', amountCents: 10_000 }),
+      expect.objectContaining({
+        method: 'credit',
+        amountCents: 9650,
+        discountCents: 350,
+        discountReason: 'card_processing_fee',
+      }),
       harness.manager,
     );
   });
@@ -592,16 +598,28 @@ describe('PaymentsService.voidPayment', () => {
   });
 
   it('reverses a card payment under its own method', async () => {
+    const cardPayment = {
+      ...cashPayment,
+      method: 'credit',
+      cardFee: 175,
+      netAmount: 4825,
+    } as Payment;
     const harness = buildService({
       paymentsRepository: {
-        findById: vi.fn().mockResolvedValue({ ...cashPayment, method: 'credit' }),
+        findById: vi.fn().mockResolvedValue(cardPayment),
       },
     });
 
     await harness.service.voidPayment(cashPayment.id, {}, MANAGER);
 
     expect(harness.cashRegisterService.recordMovement).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'out', method: 'credit', amountCents: cashPayment.amount }),
+      expect.objectContaining({
+        type: 'out',
+        method: 'credit',
+        amountCents: 4825,
+        discountCents: 175,
+        discountReason: 'card_processing_fee',
+      }),
       harness.manager,
     );
   });

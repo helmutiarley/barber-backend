@@ -116,7 +116,6 @@ export class PaymentsService {
     await this.assertNoOverpay(appointment, rows);
 
     const payments = await withTransaction(this.dataSource, async (manager) => {
-
       const session = await this.cashRegisterService.requireOpenSession(manager);
 
       const created = await this.paymentsRepository.create(
@@ -131,7 +130,9 @@ export class PaymentsService {
             type: 'in',
             source: 'payment',
             method: payment.method,
-            amountCents: payment.amount,
+            amountCents: payment.netAmount,
+            discountCents: payment.cardFee,
+            discountReason: payment.cardFee > 0 ? 'card_processing_fee' : null,
             paymentId: payment.id,
             createdBy: actor.id,
           },
@@ -177,7 +178,9 @@ export class PaymentsService {
         type: 'in',
         source: 'payment',
         method: payment.method,
-        amountCents: payment.amount,
+        amountCents: payment.netAmount,
+        discountCents: payment.cardFee,
+        discountReason: payment.cardFee > 0 ? 'card_processing_fee' : null,
         paymentId: payment.id,
         createdBy: actor.id,
       },
@@ -218,7 +221,9 @@ export class PaymentsService {
         type: 'out',
         source: 'payment',
         method: payment.method,
-        amountCents: payment.amount,
+        amountCents: payment.netAmount,
+        discountCents: payment.cardFee,
+        discountReason: payment.cardFee > 0 ? 'card_processing_fee' : null,
         paymentId: payment.id,
         description: 'Voided sale',
         createdBy: actor.id,
@@ -271,7 +276,6 @@ export class PaymentsService {
     }
 
     const voided = await withTransaction(this.dataSource, async (manager) => {
-
       const session = await this.cashRegisterService.requireOpenSession(manager);
 
       const updated = await this.paymentsRepository.void(
@@ -286,7 +290,9 @@ export class PaymentsService {
           type: 'out',
           source: 'payment',
           method: payment.method,
-          amountCents: payment.amount,
+          amountCents: payment.netAmount,
+          discountCents: payment.cardFee,
+          discountReason: payment.cardFee > 0 ? 'card_processing_fee' : null,
           paymentId: payment.id,
           description: 'Voided payment',
           createdBy: actor.id,

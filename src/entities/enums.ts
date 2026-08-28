@@ -34,6 +34,9 @@ export const CASH_MOVEMENT_SOURCES = [
 ] as const;
 export type CashMovementSource = (typeof CASH_MOVEMENT_SOURCES)[number];
 
+export const CASH_MOVEMENT_DISCOUNT_REASONS = ['card_processing_fee'] as const;
+export type CashMovementDiscountReason = (typeof CASH_MOVEMENT_DISCOUNT_REASONS)[number];
+
 export const MANUAL_CASH_MOVEMENT_SOURCES = ['withdrawal', 'deposit', 'adjustment'] as const;
 export type ManualCashMovementSource = (typeof MANUAL_CASH_MOVEMENT_SOURCES)[number];
 

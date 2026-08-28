@@ -84,7 +84,8 @@ export async function makeUser(
   overrides: Partial<User> & { role?: UserRole } = {},
 ): Promise<User> {
   const repository = dataSource.getRepository(User);
-  const shopId = overrides.shopId === undefined ? (await ensureTestShop(dataSource)).id : overrides.shopId;
+  const shopId =
+    overrides.shopId === undefined ? (await ensureTestShop(dataSource)).id : overrides.shopId;
 
   return repository.save(
     repository.create({
@@ -302,6 +303,8 @@ export async function makeMovement(
       source: 'deposit',
       method: 'cash',
       amount: 5000,
+      discountAmount: 0,
+      discountReason: null,
       paymentId: null,
       expenseId: null,
       description: null,
@@ -401,7 +404,9 @@ export async function makeCommissionEntry(
       ...overrides,
       shopId,
       barberId:
-        overrides.barberId ?? appointment?.barberId ?? (await makeBarber(dataSource, { shopId })).id,
+        overrides.barberId ??
+        appointment?.barberId ??
+        (await makeBarber(dataSource, { shopId })).id,
       appointmentId: appointment ? appointment.id : (overrides.appointmentId ?? null),
       ruleId:
         overrides.ruleId ?? (await ensureDefaultCommissionRule(dataSource, { rate, shopId })).id,

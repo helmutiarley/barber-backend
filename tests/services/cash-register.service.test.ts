@@ -30,16 +30,23 @@ function drawerTotals(cashIn: number, cashOut: number) {
     out: cashOut,
     cashIn,
     cashOut,
-    byMethod: [{ method: 'cash' as const, in: cashIn, out: cashOut }],
+    discount: 0,
+    byMethod: [{ method: 'cash' as const, in: cashIn, out: cashOut, discount: 0 }],
   };
 }
 
 function buildService(
   overrides: {
+    appointmentsRepository?: Record<string, unknown>;
     cashRegisterSessionsRepository?: Record<string, unknown>;
     cashMovementsRepository?: Record<string, unknown>;
   } = {},
 ) {
+  const appointmentsRepository = Object.assign(
+    { countPendingClosureBetween: vi.fn().mockResolvedValue(0) },
+    overrides.appointmentsRepository,
+  );
+
   const cashRegisterSessionsRepository = Object.assign(
     {
       findOpen: vi.fn().mockResolvedValue(openSession),
@@ -61,6 +68,8 @@ function buildService(
         id: 'movement-1',
         paymentId: null,
         description: null,
+        discountAmount: 0,
+        discountReason: null,
         createdAt: NOW,
         ...data,
       })),
@@ -71,13 +80,16 @@ function buildService(
   );
 
   const cradle = {
+    appointmentsRepository,
     cashRegisterSessionsRepository,
     cashMovementsRepository,
     clock: { now: () => NOW },
+    config: { shopTimezone: 'America/Sao_Paulo' },
   } as unknown as Cradle;
 
   return {
     service: new CashRegisterService(cradle),
+    appointmentsRepository,
     cashRegisterSessionsRepository,
     cashMovementsRepository,
   };
@@ -138,6 +150,24 @@ describe('CashRegisterService.close', () => {
     expect(harness.cashRegisterSessionsRepository.close).not.toHaveBeenCalled();
   });
 
+  it('refuses to close while appointments still need payment or completion', async () => {
+    const harness = buildService({
+      appointmentsRepository: { countPendingClosureBetween: vi.fn().mockResolvedValue(2) },
+    });
+
+    await expect(
+      harness.service.close({ countedBalanceCents: 10_000 }, MANAGER),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      details: { reason: 'PENDING_APPOINTMENTS', pendingAppointmentsCount: 2 },
+    });
+    expect(harness.appointmentsRepository.countPendingClosureBetween).toHaveBeenCalledWith(
+      new Date('2030-03-10T03:00:00.000Z'),
+      new Date('2030-03-11T03:00:00.000Z'),
+    );
+    expect(harness.cashRegisterSessionsRepository.close).not.toHaveBeenCalled();
+  });
+
   it('accepts a shortfall that is explained', async () => {
     const harness = buildService({
       cashMovementsRepository: { sumBySession: vi.fn().mockResolvedValue(drawerTotals(5000, 0)) },
@@ -169,10 +199,11 @@ describe('CashRegisterService.close', () => {
           out: 0,
           cashIn: 5000,
           cashOut: 0,
+          discount: 0,
           byMethod: [
-            { method: 'cash', in: 5000, out: 0 },
-            { method: 'pix', in: 30_000, out: 0 },
-            { method: 'credit', in: 7000, out: 0 },
+            { method: 'cash', in: 5000, out: 0, discount: 0 },
+            { method: 'pix', in: 30_000, out: 0, discount: 0 },
+            { method: 'credit', in: 7000, out: 0, discount: 0 },
           ],
         }),
       },
@@ -209,6 +240,7 @@ describe('CashRegisterService.current', () => {
       outCents: 2000,
       expectedBalanceCents: 20_000,
     });
+    expect(current.pendingAppointmentsCount).toBe(0);
     expect(current.session.expectedBalanceCents).toBeNull();
   });
 
@@ -220,9 +252,11 @@ describe('CashRegisterService.current', () => {
           out: 2000,
           cashIn: 12_000,
           cashOut: 2000,
+          discount: 350,
           byMethod: [
-            { method: 'cash', in: 12_000, out: 2000 },
-            { method: 'pix', in: 10_000, out: 0 },
+            { method: 'cash', in: 12_000, out: 2000, discount: 0 },
+            { method: 'pix', in: 10_000, out: 0, discount: 0 },
+            { method: 'credit', in: 0, out: 0, discount: 350 },
           ],
         }),
       },
@@ -233,14 +267,15 @@ describe('CashRegisterService.current', () => {
     expect(current.totals).toEqual({
       inCents: 22_000,
       outCents: 2000,
+      discountCents: 350,
       cashInCents: 12_000,
       cashOutCents: 2000,
       expectedBalanceCents: 20_000,
       byMethod: [
-        { method: 'cash', inCents: 12_000, outCents: 2000, netCents: 10_000 },
-        { method: 'pix', inCents: 10_000, outCents: 0, netCents: 10_000 },
-        { method: 'debit', inCents: 0, outCents: 0, netCents: 0 },
-        { method: 'credit', inCents: 0, outCents: 0, netCents: 0 },
+        { method: 'cash', inCents: 12_000, outCents: 2000, discountCents: 0, netCents: 10_000 },
+        { method: 'pix', inCents: 10_000, outCents: 0, discountCents: 0, netCents: 10_000 },
+        { method: 'debit', inCents: 0, outCents: 0, discountCents: 0, netCents: 0 },
+        { method: 'credit', inCents: 0, outCents: 0, discountCents: 350, netCents: 0 },
       ],
     });
   });
@@ -270,6 +305,8 @@ describe('CashRegisterService.recordManualMovement', () => {
         source: 'withdrawal',
         method: 'cash',
         amount: 3000,
+        discountAmount: 0,
+        discountReason: null,
         paymentId: null,
         expenseId: null,
         advanceId: null,
@@ -308,6 +345,8 @@ describe('CashRegisterService.recordMovement', () => {
         type: 'in',
         source: 'payment',
         amountCents: 4500,
+        discountCents: 175,
+        discountReason: 'card_processing_fee',
         paymentId: 'payment-1',
         createdBy: MANAGER.id,
       },
@@ -315,7 +354,13 @@ describe('CashRegisterService.recordMovement', () => {
     );
 
     expect(harness.cashMovementsRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentId: 'payment-1', source: 'payment' }),
+      expect.objectContaining({
+        paymentId: 'payment-1',
+        source: 'payment',
+        amount: 4500,
+        discountAmount: 175,
+        discountReason: 'card_processing_fee',
+      }),
       manager,
     );
   });
@@ -350,6 +395,8 @@ describe('CashRegisterService.getSession', () => {
             type: 'in',
             source: 'payment',
             amount: 4500,
+            discountAmount: 175,
+            discountReason: 'card_processing_fee',
             paymentId: 'payment-1',
             description: null,
             createdBy: MANAGER.id,
@@ -363,7 +410,12 @@ describe('CashRegisterService.getSession', () => {
 
     expect(detail.session.status).toBe('closed');
     expect(detail.movements).toHaveLength(1);
-    expect(detail.movements[0]).toMatchObject({ amountCents: 4500, paymentId: 'payment-1' });
+    expect(detail.movements[0]).toMatchObject({
+      amountCents: 4500,
+      discountCents: 175,
+      discountReason: 'card_processing_fee',
+      paymentId: 'payment-1',
+    });
   });
 
   it('404s on an unknown session', async () => {

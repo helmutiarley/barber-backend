@@ -1,7 +1,12 @@
 import type { DataSource, EntityManager, Repository } from 'typeorm';
 import type { Cradle } from '../container';
 import { CashMovement } from '../entities/cash-movement.entity';
-import type { CashMovementSource, CashMovementType, PaymentMethod } from '../entities/enums';
+import type {
+  CashMovementDiscountReason,
+  CashMovementSource,
+  CashMovementType,
+  PaymentMethod,
+} from '../entities/enums';
 import { decimalStringToCents } from '../lib/money';
 import { requireShopId } from '../lib/shop-context';
 
@@ -12,6 +17,8 @@ export interface NewMovement {
   method?: PaymentMethod;
 
   amount: number;
+  discountAmount?: number;
+  discountReason?: CashMovementDiscountReason | null;
   paymentId?: string | null;
   expenseId?: string | null;
   advanceId?: string | null;
@@ -24,6 +31,7 @@ export interface MethodTotals {
   method: PaymentMethod;
   in: number;
   out: number;
+  discount: number;
 }
 
 export interface MovementTotals {
@@ -31,6 +39,7 @@ export interface MovementTotals {
   out: number;
   cashIn: number;
   cashOut: number;
+  discount: number;
   byMethod: MethodTotals[];
 }
 
@@ -38,6 +47,7 @@ interface RawMethodTotals {
   method: PaymentMethod;
   in: string | null;
   out: string | null;
+  discount: string | null;
 }
 
 export class CashMovementsRepository {
@@ -55,6 +65,8 @@ export class CashMovementsRepository {
     return repository.save(
       repository.create({
         method: 'cash',
+        discountAmount: 0,
+        discountReason: null,
         paymentId: null,
         expenseId: null,
         advanceId: null,
@@ -79,6 +91,10 @@ export class CashMovementsRepository {
       .select('m.method::text', 'method')
       .addSelect(`SUM(m.amount) FILTER (WHERE m.type = 'in')`, 'in')
       .addSelect(`SUM(m.amount) FILTER (WHERE m.type = 'out')`, 'out')
+      .addSelect(
+        `SUM(CASE WHEN m.type = 'in' THEN m.discount_amount ELSE -m.discount_amount END)`,
+        'discount',
+      )
       .where('m.session_id = :sessionId', { sessionId })
       .andWhere('m.shop_id = :shopId', { shopId: this.shopId })
       .groupBy('1')
@@ -88,6 +104,7 @@ export class CashMovementsRepository {
       method: row.method,
       in: row.in ? decimalStringToCents(row.in) : 0,
       out: row.out ? decimalStringToCents(row.out) : 0,
+      discount: row.discount ? decimalStringToCents(row.discount) : 0,
     }));
 
     const cash = byMethod.find((row) => row.method === 'cash');
@@ -97,6 +114,7 @@ export class CashMovementsRepository {
       out: byMethod.reduce((total, row) => total + row.out, 0),
       cashIn: cash?.in ?? 0,
       cashOut: cash?.out ?? 0,
+      discount: byMethod.reduce((total, row) => total + row.discount, 0),
       byMethod,
     };
   }

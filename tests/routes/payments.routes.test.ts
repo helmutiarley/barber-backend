@@ -94,6 +94,15 @@ describe('payments routes', () => {
         cashRegisterSessionId: session.id,
       });
       expect(await countRows()).toEqual([1, 1]);
+
+      const movement = await dataSource
+        .getRepository(CashMovement)
+        .findOneByOrFail({ paymentId: response.body.data[0].id });
+      expect(movement).toMatchObject({
+        amount: 4825,
+        discountAmount: 175,
+        discountReason: 'card_processing_fee',
+      });
     });
 
     it('keeps a card payment out of the drawer it never entered', async () => {
@@ -103,15 +112,17 @@ describe('payments routes', () => {
 
       const current = await get('/v1/cash-register/current', managerAuth);
       expect(current.body.data.totals).toMatchObject({
-        inCents: 5000,
+        inCents: 4825,
+        discountCents: 175,
         cashInCents: 0,
         expectedBalanceCents: 10_000,
       });
       expect(current.body.data.totals.byMethod).toContainEqual({
         method: 'credit',
-        inCents: 5000,
+        inCents: 4825,
         outCents: 0,
-        netCents: 5000,
+        discountCents: 175,
+        netCents: 4825,
       });
     });
 

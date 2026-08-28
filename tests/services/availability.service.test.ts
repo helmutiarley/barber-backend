@@ -7,10 +7,12 @@ import type { BarberSchedule } from '../../src/entities/barber-schedule.entity';
 import type { Barber } from '../../src/entities/barber.entity';
 import type { Service } from '../../src/entities/service.entity';
 import { NotFoundError, ValidationError } from '../../src/errors/app-error';
+import type { Clock } from '../../src/lib/clock';
 import { AvailabilityService } from '../../src/services/availability.service';
 
 const MONDAY = '2026-07-27';
 const SUNDAY = '2026-07-26';
+const NOW = new Date('2026-07-27T11:00:00.000Z');
 
 const barber = { id: 'barber-1', active: true } as Barber;
 const service = { id: 'service-1', active: true, durationMinutes: 30 } as Service;
@@ -36,6 +38,7 @@ interface Overrides {
   appointmentsRepository?: Record<string, unknown>;
   servicesRepository?: Record<string, unknown>;
   config?: AppConfig;
+  clock?: Clock;
 }
 
 function buildService(overrides: Overrides = {}) {
@@ -61,6 +64,7 @@ function buildService(overrides: Overrides = {}) {
       ...overrides.servicesRepository,
     },
     config: overrides.config ?? config,
+    clock: overrides.clock ?? { now: () => NOW },
   } as unknown as Cradle;
 
   return new AvailabilityService(cradle);
@@ -189,6 +193,49 @@ describe('AvailabilityService.getDay', () => {
       expect(result.slots).toHaveLength(3);
     });
 
+    it('hides start times that have already passed today', async () => {
+      const availability = buildService({
+        barberSchedulesRepository: {
+          findByBarberAndWeekday: vi.fn().mockResolvedValue({ ...nineToSix, endTime: '11:00:00' }),
+        },
+        clock: { now: () => new Date('2026-07-27T13:10:00.000Z') },
+      });
+
+      const result = await availability.getDay({
+        barberId: barber.id,
+        date: MONDAY,
+        serviceId: service.id,
+      });
+
+      expect(result.free).toEqual([
+        {
+          startsAt: '2026-07-27T13:10:00.000Z',
+          endsAt: '2026-07-27T14:00:00.000Z',
+        },
+      ]);
+      expect(result.slots).toEqual([
+        '2026-07-27T13:15:00.000Z',
+        '2026-07-27T13:30:00.000Z',
+      ]);
+    });
+
+    it('returns no availability for an earlier shop day', async () => {
+      const availability = buildService({
+        barberSchedulesRepository: {
+          findByBarberAndWeekday: vi.fn().mockResolvedValue(nineToSix),
+        },
+      });
+
+      const result = await availability.getDay({
+        barberId: barber.id,
+        date: SUNDAY,
+        serviceId: service.id,
+      });
+
+      expect(result.free).toEqual([]);
+      expect(result.slots).toEqual([]);
+    });
+
     it('omits slots that a booked appointment swallowed', async () => {
       const availability = buildService({
         barberSchedulesRepository: {
@@ -228,6 +275,10 @@ describe('AvailabilityService.isAvailable', () => {
     await expect(buildService().isAvailable(barber.id, utc('14:00'), utc('14:30'))).resolves.toBe(
       true,
     );
+  });
+
+  it('rejects a start time that is not in the future', async () => {
+    await expect(buildService().isAvailable(barber.id, NOW, utc('11:30'))).resolves.toBe(false);
   });
 
   it('accepts a booking that exactly fills a gap', async () => {

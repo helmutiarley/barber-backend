@@ -13,6 +13,7 @@ import { MultiTenantShops1787620000000 } from './1787620000000-MultiTenantShops'
 import { ShopSoftDelete1787710000000 } from './1787710000000-ShopSoftDelete';
 import { WalkInClients1787800000000 } from './1787800000000-WalkInClients';
 import { CashMovementMethod1787900000000 } from './1787900000000-CashMovementMethod';
+import { CashMovementDiscount1788000000000 } from './1788000000000-CashMovementDiscount';
 
 export const migrations = [
   InitialSchema1785084994714,
@@ -30,4 +31,5 @@ export const migrations = [
   ShopSoftDelete1787710000000,
   WalkInClients1787800000000,
   CashMovementMethod1787900000000,
+  CashMovementDiscount1788000000000,
 ];
