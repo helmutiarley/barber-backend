@@ -15,6 +15,7 @@ import type {
   AppointmentsRepository,
 } from '../repositories/appointments.repository';
 import type { BarbersRepository } from '../repositories/barbers.repository';
+import type { PaymentsRepository } from '../repositories/payments.repository';
 import type { ServicesRepository } from '../repositories/services.repository';
 import type { UsersRepository } from '../repositories/users.repository';
 import type { AvailabilityService } from './availability.service';
@@ -27,7 +28,6 @@ export interface WalkInClientInput {
 }
 
 export interface CreateAppointmentInput {
-
   clientId?: string;
 
   walkIn?: WalkInClientInput;
@@ -50,7 +50,6 @@ export interface PagedAppointments extends PageInput {
 }
 
 export interface ListAppointmentsInput extends PageInput {
-
   from: Date;
   to: Date;
   barberId?: string;
@@ -66,13 +65,11 @@ export interface RescheduleAppointmentInput {
 }
 
 export interface CancelAppointmentInput {
-
   reason?: string;
 }
 
 type BookingClient =
-  | { kind: 'existing'; id: string }
-  | { kind: 'walkIn'; input: WalkInClientInput };
+  { kind: 'existing'; id: string } | { kind: 'walkIn'; input: WalkInClientInput };
 
 const STAFF_ROLES = ['ADMIN', 'MANAGER'] as const;
 
@@ -104,6 +101,7 @@ export interface AppointmentDto {
   barberId: string;
   serviceId: string;
   status: AppointmentStatus;
+  isPaid: boolean;
   startsAt: string;
   endsAt: string;
   priceCents: number;
@@ -121,6 +119,7 @@ const HOUR_IN_MS = 3_600_000;
 export class AppointmentsService {
   private readonly appointmentsRepository: AppointmentsRepository;
   private readonly barbersRepository: BarbersRepository;
+  private readonly paymentsRepository: PaymentsRepository;
   private readonly servicesRepository: ServicesRepository;
   private readonly usersRepository: UsersRepository;
   private readonly availabilityService: AvailabilityService;
@@ -135,6 +134,7 @@ export class AppointmentsService {
   constructor({
     appointmentsRepository,
     barbersRepository,
+    paymentsRepository,
     servicesRepository,
     usersRepository,
     availabilityService,
@@ -146,6 +146,7 @@ export class AppointmentsService {
   }: Cradle) {
     this.appointmentsRepository = appointmentsRepository;
     this.barbersRepository = barbersRepository;
+    this.paymentsRepository = paymentsRepository;
     this.servicesRepository = servicesRepository;
     this.usersRepository = usersRepository;
     this.availabilityService = availabilityService;
@@ -209,20 +210,17 @@ export class AppointmentsService {
         : await withTransaction(this.dataSource, async (manager) => {
             const walkIn = await this.findOrCreateWalkInClient(client.input, manager);
 
-            return this.appointmentsRepository.create(
-              { ...booking, clientId: walkIn.id },
-              manager,
-            );
+            return this.appointmentsRepository.create({ ...booking, clientId: walkIn.id }, manager);
           });
 
-    return toDto(appointment);
+    return toDto(appointment, false);
   }
 
   async getAppointment(id: string, actor: AuthenticatedUser): Promise<AppointmentDto> {
     const appointment = await this.requireAppointment(id);
     await this.assertCanRead(appointment, actor);
 
-    return toDto(appointment);
+    return this.toDto(appointment);
   }
 
   async list(input: ListAppointmentsInput): Promise<PagedAppointments> {
@@ -238,7 +236,7 @@ export class AppointmentsService {
       page,
     );
 
-    return { items: appointments.map(toDto), total, ...page };
+    return { items: await this.toDtos(appointments), total, ...page };
   }
 
   async listBarberDay(
@@ -258,7 +256,7 @@ export class AppointmentsService {
     const { start, end } = shopDayBounds(date, this.config.shopTimezone);
     const appointments = await this.appointmentsRepository.findBetween(barber.id, start, end);
 
-    return appointments.map(toDto);
+    return this.toDtos(appointments);
   }
 
   async listOwn(actor: AuthenticatedUser, page: PageInput): Promise<PagedAppointments> {
@@ -268,7 +266,7 @@ export class AppointmentsService {
   async listForClient(clientId: string, page: PageInput): Promise<PagedAppointments> {
     const [appointments, total] = await this.appointmentsRepository.findForClient(clientId, page);
 
-    return { items: appointments.map(toDto), total, ...page };
+    return { items: await this.toDtos(appointments), total, ...page };
   }
 
   async confirm(id: string, actor: AuthenticatedUser): Promise<AppointmentDto> {
@@ -301,7 +299,7 @@ export class AppointmentsService {
       return completed;
     });
 
-    return toDto(updated);
+    return this.toDto(updated);
   }
 
   async markNoShow(id: string, actor: AuthenticatedUser): Promise<AppointmentDto> {
@@ -468,7 +466,22 @@ export class AppointmentsService {
       throw new NotFoundError(`Appointment ${id} not found`);
     }
 
-    return toDto(updated);
+    return this.toDto(updated);
+  }
+
+  private async toDto(appointment: Appointment): Promise<AppointmentDto> {
+    const [dto] = await this.toDtos([appointment]);
+    return dto!;
+  }
+
+  private async toDtos(appointments: Appointment[]): Promise<AppointmentDto[]> {
+    const paidTotals = await this.paymentsRepository.sumPaidForAppointments(
+      appointments.map((appointment) => appointment.id),
+    );
+
+    return appointments.map((appointment) =>
+      toDto(appointment, (paidTotals.get(appointment.id) ?? 0) >= appointment.price),
+    );
   }
 
   private async assertCanRead(appointment: Appointment, actor: AuthenticatedUser): Promise<void> {
@@ -519,13 +532,14 @@ export class AppointmentsService {
   }
 }
 
-function toDto(appointment: Appointment): AppointmentDto {
+function toDto(appointment: Appointment, isPaid: boolean): AppointmentDto {
   return {
     id: appointment.id,
     clientId: appointment.clientId,
     barberId: appointment.barberId,
     serviceId: appointment.serviceId,
     status: appointment.status,
+    isPaid,
     startsAt: appointment.startsAt.toISOString(),
     endsAt: appointment.endsAt.toISOString(),
     priceCents: appointment.price,

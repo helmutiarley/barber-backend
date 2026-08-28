@@ -81,6 +81,31 @@ export class PaymentsRepository {
     return raw?.total ? decimalStringToCents(raw.total) : 0;
   }
 
+  async sumPaidForAppointments(
+    appointmentIds: string[],
+    manager?: EntityManager,
+  ): Promise<Map<string, number>> {
+    const ids = [...new Set(appointmentIds)];
+    const totals = new Map(ids.map((id) => [id, 0]));
+    if (ids.length === 0) return totals;
+
+    const rows = await this.repo(manager)
+      .createQueryBuilder('p')
+      .select('p.appointment_id', 'appointmentId')
+      .addSelect('SUM(p.amount)', 'total')
+      .where('p.appointment_id IN (:...ids)', { ids })
+      .andWhere('p.shop_id = :shopId', { shopId: this.shopId })
+      .andWhere('p.voided_at IS NULL')
+      .groupBy('p.appointment_id')
+      .getRawMany<{ appointmentId: string; total: string }>();
+
+    for (const row of rows) {
+      totals.set(row.appointmentId, decimalStringToCents(row.total));
+    }
+
+    return totals;
+  }
+
   async sumNetForAppointment(
     appointmentId: string,
     manager?: EntityManager,

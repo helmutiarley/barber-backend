@@ -14,6 +14,7 @@ import {
   makeAuthenticatedUser,
   makeBarber,
   makeCommissionRule,
+  makePayment,
   makeService,
   makeSession,
   makeUser,
@@ -73,6 +74,7 @@ describe('appointments routes', () => {
       expect(response.body.data).toMatchObject({
         clientId: client.id,
         status: 'scheduled',
+        isPaid: false,
         priceCents: 4500,
         durationMinutes: 30,
         startsAt: AT_10_00,
@@ -107,7 +109,6 @@ describe('appointments routes', () => {
     });
 
     it('holds the no-overlap invariant under concurrent requests', async () => {
-
       const responses = await Promise.all([book(), book()]);
 
       const statuses = responses.map((response) => response.status).sort();
@@ -283,7 +284,6 @@ describe('appointments routes', () => {
     });
 
     describe('availability', () => {
-
       const OUTSIDE_HOURS = '2030-03-01T05:00:00.000Z';
 
       it('refuses a slot outside the working week', async () => {
@@ -345,6 +345,20 @@ describe('appointments routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.data.id).toBe(created.body.data.id);
+    });
+
+    it('marks the appointment as paid when active payments cover its price', async () => {
+      const created = await book();
+      await makePayment(dataSource, {
+        appointmentId: created.body.data.id,
+        amount: service.price,
+      });
+
+      const response = await request(app)
+        .get(`/v1/appointments/${created.body.data.id}`)
+        .set('Authorization', clientAuth);
+
+      expect(response.body.data.isPaid).toBe(true);
     });
 
     it('hides another client\u2019s appointment', async () => {
@@ -713,7 +727,6 @@ describe('appointments routes', () => {
       });
 
       it('holds the client to the cancellation window', async () => {
-
         await dataSource.query('UPDATE appointments SET starts_at = $1, ends_at = $2', [
           new Date(Date.now() + 3_600_000),
           new Date(Date.now() + 5_400_000),

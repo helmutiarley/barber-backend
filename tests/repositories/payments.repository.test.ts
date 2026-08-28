@@ -84,6 +84,30 @@ describe('PaymentsRepository', () => {
     });
   });
 
+  describe('sumPaidForAppointments', () => {
+    it('returns active totals for every requested appointment', async () => {
+      const first = await makeAppointment(dataSource, { status: 'completed' });
+      const second = await makeAppointment(dataSource, { status: 'completed' });
+      const unpaid = await makeAppointment(dataSource, { status: 'completed' });
+      await makePayment(dataSource, { appointmentId: first.id, amount: 2000 });
+      await makePayment(dataSource, { appointmentId: first.id, amount: 2500 });
+      const voided = await makePayment(dataSource, { appointmentId: second.id, amount: 4500 });
+      await repository.void(voided.id, {
+        voidedAt: new Date(),
+        voidedBy: voided.receivedBy,
+        voidReason: 'mistake',
+      });
+
+      const totals = await repository.sumPaidForAppointments([first.id, second.id, unpaid.id]);
+
+      expect(Object.fromEntries(totals)).toEqual({
+        [first.id]: 4500,
+        [second.id]: 0,
+        [unpaid.id]: 0,
+      });
+    });
+  });
+
   describe('void', () => {
     it('keeps the row readable and records who and why', async () => {
       const payment = await makePayment(dataSource);

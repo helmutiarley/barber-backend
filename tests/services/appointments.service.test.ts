@@ -62,6 +62,9 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
     })),
   };
   const barbersRepository = { findById: vi.fn().mockResolvedValue(barber) };
+  const paymentsRepository = {
+    sumPaidForAppointments: vi.fn(async (ids: string[]) => new Map(ids.map((id) => [id, 0]))),
+  };
   const servicesRepository = { findById: vi.fn().mockResolvedValue(service) };
   const usersRepository = { findById: vi.fn().mockResolvedValue(client) };
   const availabilityService = { isAvailable: vi.fn().mockResolvedValue(true) };
@@ -76,6 +79,7 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
 
   Object.assign(appointmentsRepository, overrides.appointmentsRepository);
   Object.assign(barbersRepository, overrides.barbersRepository);
+  Object.assign(paymentsRepository, overrides.paymentsRepository);
   Object.assign(servicesRepository, overrides.servicesRepository);
   Object.assign(usersRepository, overrides.usersRepository);
   Object.assign(availabilityService, overrides.availabilityService);
@@ -90,6 +94,7 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
   const cradle = {
     appointmentsRepository,
     barbersRepository,
+    paymentsRepository,
     servicesRepository,
     usersRepository,
     availabilityService,
@@ -104,6 +109,7 @@ function buildService(overrides: Partial<Record<string, Record<string, unknown>>
     service: new AppointmentsService(cradle),
     appointmentsRepository,
     barbersRepository,
+    paymentsRepository,
     servicesRepository,
     usersRepository,
     availabilityService,
@@ -267,7 +273,6 @@ describe('AppointmentsService.createAppointment', () => {
   });
 
   describe('availability', () => {
-
     const unavailable = () => ({
       availabilityService: { isAvailable: vi.fn().mockResolvedValue(false) },
     });
@@ -343,7 +348,25 @@ describe('AppointmentsService.getAppointment', () => {
 
     await expect(
       harness.service.getAppointment('appointment-1', CLIENT_ACTOR),
-    ).resolves.toMatchObject({ id: 'appointment-1', priceCents: 4500 });
+    ).resolves.toMatchObject({ id: 'appointment-1', priceCents: 4500, isPaid: false });
+  });
+
+  it.each([
+    [4499, false],
+    [4500, true],
+    [5000, true],
+  ])('reports a paid total of %i cents as isPaid=%s', async (paidCents, isPaid) => {
+    const harness = harnessWithAppointment({
+      paymentsRepository: {
+        sumPaidForAppointments: vi
+          .fn()
+          .mockResolvedValue(new Map([[storedAppointment.id, paidCents]])),
+      },
+    });
+
+    await expect(
+      harness.service.getAppointment('appointment-1', CLIENT_ACTOR),
+    ).resolves.toMatchObject({ isPaid });
   });
 
   it('returns the appointment to staff', async () => {
